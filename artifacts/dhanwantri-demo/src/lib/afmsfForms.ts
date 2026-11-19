@@ -302,7 +302,8 @@ const ameHearing = section(
   ...entCommon.fields.slice(0, 4),
   field('ent.tympanic_membrane_intact', 'Tympanic membrane intact (Y / N)', 'select', ['Yes', 'No']),
   field('ent.mobility_valsalva', 'Mobility (Valsalva)'),
-  ...entCommon.fields.slice(4),
+  field('ent.nose', 'Nose findings', 'textarea'),
+  field('ent.throat', 'Throat findings', 'textarea'),
   field('ent.sinuses', 'Sinus findings'),
 );
 const ameFinal = section(
@@ -361,7 +362,7 @@ export const FORM_PAGES: Record<ExaminationType, ExaminationPage[]> = {
       number: 2, total: 2, title: 'AFMSF 3B · Page 2', continuation: true,
       sections: [
         section('18 · Surgery / Locomotor system', ...locomotor.fields.slice(0, 6)),
-        section('19 · Vision', ...eyeCommon.fields),
+        section('19 · Vision', ...eyeCommon.fields.slice(0, 4)),
         ameHearing,
         section('21 · Gynaecological Examination', ...gynaecology.fields.slice(0, 9)),
         section('22 · Immunization', field('immunisation.record', 'Immunisation details', 'textarea')),

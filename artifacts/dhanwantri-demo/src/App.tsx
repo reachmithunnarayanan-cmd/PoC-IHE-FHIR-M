@@ -962,7 +962,7 @@ function App() {
             </div>
             <div id="print-document" className="print-document">
               <div className="print-preview-warning no-print">Print preview based on the supplied AFMSF examples · official marks omitted · synthetic demo data.</div>
-              {activeFormPages.map(page => <section className="afmsf-print-page" key={`${state.examination.type}-${page.number}`} data-testid={`print-page-${page.number}`}>
+              {activeFormPages.map(page => <section className={`afmsf-print-page ${state.examination.type === 'AME' ? 'afmsf-print-page--ame' : ''} ${page.number === 2 ? 'afmsf-print-page--2' : ''}`} key={`${state.examination.type}-${page.number}`} data-testid={`print-page-${page.number}`}>
                 <header className="afmsf-print-header">
                   <b className="confidential-mark">CONFIDENTIAL</b>
                   <span className="synthetic-mark">DEMO · SYNTHETIC DATA · PAGE {page.number} OF {page.total}</span>

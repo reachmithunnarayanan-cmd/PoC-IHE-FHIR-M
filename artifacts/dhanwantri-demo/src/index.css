@@ -514,6 +514,12 @@ button { cursor: pointer; }
   #print-document .print-cell--span-2 { grid-column:span 2; }
   #print-document .print-cell--textarea { grid-column:1/-1;min-height:6mm; }
   #print-document .layout-authority .print-cell--textarea,#print-document .layout-final .print-cell--textarea { min-height:8mm; }
+  #print-document .afmsf-print-page--ame.afmsf-print-page--2 .print-section { margin-top:1.2mm; }
+  #print-document .afmsf-print-page--ame.afmsf-print-page--2 .print-cell { min-height:5.5mm;padding:.45mm 0;line-height:1.05; }
+  #print-document .afmsf-print-page--ame.afmsf-print-page--2 .print-cell b { margin-bottom:.2mm; }
+  #print-document .afmsf-print-page--ame.afmsf-print-page--2 .print-cell--textarea { min-height:8mm; }
+  #print-document .afmsf-print-page--ame.afmsf-print-page--2 .layout-final .print-cell--textarea { min-height:14mm; }
+  #print-document .afmsf-print-page--ame.afmsf-print-page--2 .layout-authority .print-cell--textarea { min-height:8mm; }
   #print-document .afmsf-form-note { margin-top:1mm;font-size:5.5pt; }
   #print-document .afmsf-pto { margin-top:.5mm;font-size:6pt; }
   #print-document .continuation-identity { display:grid!important;margin:1.5mm 0;padding:1mm;gap:2mm;font-size:6.5pt; }
