@@ -1,0 +1,382 @@
+{
+  "profileId": "demo-adn-to-public-v1",
+  "profileName": "PoC — ADN to Public (Synthetic Data)",
+  "version": "1.0",
+  "direction": "ADN-TO-PUBLIC",
+  "description": "Illustrative allowlist for synthetic demonstration only. Locked military exclusions cannot be enabled in the operator panel.",
+  "updatedAt": "2026-11-19T00:00:00Z",
+  "updatedBy": "demo-admin",
+  "fields": [
+    {
+      "canonicalFieldId": "person.source_patient_id",
+      "selected": true,
+      "action": "conditional",
+      "reason": "Include only when present, clinically relevant and permitted by this demo profile."
+    },
+    {
+      "canonicalFieldId": "person.name",
+      "selected": true,
+      "action": "conditional",
+      "reason": "Include only when present, clinically relevant and permitted by this demo profile."
+    },
+    {
+      "canonicalFieldId": "person.date_of_birth",
+      "selected": true,
+      "action": "conditional",
+      "reason": "Include only when present, clinically relevant and permitted by this demo profile."
+    },
+    {
+      "canonicalFieldId": "person.sex",
+      "selected": true,
+      "action": "conditional",
+      "reason": "Include only when present, clinically relevant and permitted by this demo profile."
+    },
+    {
+      "canonicalFieldId": "clinical.past_medical_history",
+      "selected": true,
+      "action": "conditional",
+      "reason": "Include only when present, clinically relevant and permitted by this demo profile."
+    },
+    {
+      "canonicalFieldId": "clinical.final_observations",
+      "selected": true,
+      "action": "conditional",
+      "reason": "Include only when present, clinically relevant and permitted by this demo profile."
+    },
+    {
+      "canonicalFieldId": "obs.height",
+      "selected": true,
+      "action": "conditional",
+      "reason": "Include only when present, clinically relevant and permitted by this demo profile."
+    },
+    {
+      "canonicalFieldId": "obs.weight_actual",
+      "selected": true,
+      "action": "conditional",
+      "reason": "Include only when present, clinically relevant and permitted by this demo profile."
+    },
+    {
+      "canonicalFieldId": "obs.waist",
+      "selected": true,
+      "action": "conditional",
+      "reason": "Include only when present, clinically relevant and permitted by this demo profile."
+    },
+    {
+      "canonicalFieldId": "obs.pulse",
+      "selected": true,
+      "action": "conditional",
+      "reason": "Include only when present, clinically relevant and permitted by this demo profile."
+    },
+    {
+      "canonicalFieldId": "obs.blood_pressure",
+      "selected": true,
+      "action": "conditional",
+      "reason": "Include only when present, clinically relevant and permitted by this demo profile."
+    },
+    {
+      "canonicalFieldId": "lab.hb",
+      "selected": true,
+      "action": "conditional",
+      "reason": "Include only when present, clinically relevant and permitted by this demo profile."
+    },
+    {
+      "canonicalFieldId": "lab.tlc",
+      "selected": true,
+      "action": "conditional",
+      "reason": "Include only when present, clinically relevant and permitted by this demo profile."
+    },
+    {
+      "canonicalFieldId": "lab.glucose_fasting",
+      "selected": true,
+      "action": "conditional",
+      "reason": "Include only when present, clinically relevant and permitted by this demo profile."
+    },
+    {
+      "canonicalFieldId": "lab.cholesterol",
+      "selected": true,
+      "action": "conditional",
+      "reason": "Include only when present, clinically relevant and permitted by this demo profile."
+    },
+    {
+      "canonicalFieldId": "diag.chest_xray_pa",
+      "selected": true,
+      "action": "conditional",
+      "reason": "Include only when present, clinically relevant and permitted by this demo profile."
+    },
+    {
+      "canonicalFieldId": "diag.ecg",
+      "selected": true,
+      "action": "conditional",
+      "reason": "Include only when present, clinically relevant and permitted by this demo profile."
+    },
+    {
+      "canonicalFieldId": "exam.respiratory",
+      "selected": true,
+      "action": "conditional",
+      "reason": "Include only when present, clinically relevant and permitted by this demo profile."
+    },
+    {
+      "canonicalFieldId": "exam.locomotor",
+      "selected": true,
+      "action": "conditional",
+      "reason": "Include only when present, clinically relevant and permitted by this demo profile."
+    },
+    {
+      "canonicalFieldId": "dental.missing_unsaveable_count",
+      "selected": true,
+      "action": "conditional",
+      "reason": "Include only when present, clinically relevant and permitted by this demo profile."
+    },
+    {
+      "canonicalFieldId": "eye.distant_vision",
+      "selected": true,
+      "action": "conditional",
+      "reason": "Include only when present, clinically relevant and permitted by this demo profile."
+    },
+    {
+      "canonicalFieldId": "eye.near_vision",
+      "selected": true,
+      "action": "conditional",
+      "reason": "Include only when present, clinically relevant and permitted by this demo profile."
+    },
+    {
+      "canonicalFieldId": "ent.hearing",
+      "selected": true,
+      "action": "conditional",
+      "reason": "Include only when present, clinically relevant and permitted by this demo profile."
+    },
+    {
+      "canonicalFieldId": "ent.audiometry",
+      "selected": true,
+      "action": "conditional",
+      "reason": "Include only when present, clinically relevant and permitted by this demo profile."
+    },
+    {
+      "canonicalFieldId": "immunisation.record",
+      "selected": true,
+      "action": "conditional",
+      "reason": "Include only when present, clinically relevant and permitted by this demo profile."
+    },
+    {
+      "canonicalFieldId": "person.adn_personnel_number",
+      "selected": false,
+      "action": "remove",
+      "locked": true,
+      "reason": "Military-only or service-administration information excluded from this outbound demo package."
+    },
+    {
+      "canonicalFieldId": "person.rank",
+      "selected": false,
+      "action": "remove",
+      "locked": true,
+      "reason": "Military-only or service-administration information excluded from this outbound demo package."
+    },
+    {
+      "canonicalFieldId": "person.unit_ship",
+      "selected": false,
+      "action": "remove",
+      "locked": true,
+      "reason": "Military-only or service-administration information excluded from this outbound demo package."
+    },
+    {
+      "canonicalFieldId": "person.service",
+      "selected": false,
+      "action": "remove",
+      "locked": true,
+      "reason": "Military-only or service-administration information excluded from this outbound demo package."
+    },
+    {
+      "canonicalFieldId": "person.arms_corps",
+      "selected": false,
+      "action": "remove",
+      "locked": true,
+      "reason": "Military-only or service-administration information excluded from this outbound demo package."
+    },
+    {
+      "canonicalFieldId": "person.branch_trade",
+      "selected": false,
+      "action": "remove",
+      "locked": true,
+      "reason": "Military-only or service-administration information excluded from this outbound demo package."
+    },
+    {
+      "canonicalFieldId": "person.commission_type",
+      "selected": false,
+      "action": "remove",
+      "locked": true,
+      "reason": "Military-only or service-administration information excluded from this outbound demo package."
+    },
+    {
+      "canonicalFieldId": "person.commission_date",
+      "selected": false,
+      "action": "remove",
+      "locked": true,
+      "reason": "Military-only or service-administration information excluded from this outbound demo package."
+    },
+    {
+      "canonicalFieldId": "person.total_service",
+      "selected": false,
+      "action": "remove",
+      "locked": true,
+      "reason": "Military-only or service-administration information excluded from this outbound demo package."
+    },
+    {
+      "canonicalFieldId": "category.present",
+      "selected": false,
+      "action": "remove",
+      "locked": true,
+      "reason": "Military-only or service-administration information excluded from this outbound demo package."
+    },
+    {
+      "canonicalFieldId": "category.board_fitness",
+      "selected": false,
+      "action": "remove",
+      "locked": true,
+      "reason": "Military-only or service-administration information excluded from this outbound demo package."
+    },
+    {
+      "canonicalFieldId": "category.final",
+      "selected": false,
+      "action": "remove",
+      "locked": true,
+      "reason": "Military-only or service-administration information excluded from this outbound demo package."
+    },
+    {
+      "canonicalFieldId": "exam.board_member_1",
+      "selected": false,
+      "action": "remove",
+      "locked": true,
+      "reason": "Military-only or service-administration information excluded from this outbound demo package."
+    },
+    {
+      "canonicalFieldId": "exam.board_member_2",
+      "selected": false,
+      "action": "remove",
+      "locked": true,
+      "reason": "Military-only or service-administration information excluded from this outbound demo package."
+    },
+    {
+      "canonicalFieldId": "exam.board_president",
+      "selected": false,
+      "action": "remove",
+      "locked": true,
+      "reason": "Military-only or service-administration information excluded from this outbound demo package."
+    },
+    {
+      "canonicalFieldId": "actor.approving_authority",
+      "selected": false,
+      "action": "remove",
+      "locked": true,
+      "reason": "Military-only or service-administration information excluded from this outbound demo package."
+    },
+    {
+      "canonicalFieldId": "clinical.remarks",
+      "selected": false,
+      "action": "hold",
+      "reason": "Free text requires review for embedded identifiers before release."
+    },
+    {
+      "canonicalFieldId": "exam.place",
+      "selected": false,
+      "action": "hold",
+      "reason": "Review facility/location text for military affiliation before release."
+    }
+  ],
+  "lockedRules": [
+    {
+      "canonicalFieldId": "person.adn_personnel_number",
+      "action": "remove",
+      "reason": "Locked PoC exclusion for military-only/service-administration field."
+    },
+    {
+      "canonicalFieldId": "person.rank",
+      "action": "remove",
+      "reason": "Locked PoC exclusion for military-only/service-administration field."
+    },
+    {
+      "canonicalFieldId": "person.unit_ship",
+      "action": "remove",
+      "reason": "Locked PoC exclusion for military-only/service-administration field."
+    },
+    {
+      "canonicalFieldId": "person.service",
+      "action": "remove",
+      "reason": "Locked PoC exclusion for military-only/service-administration field."
+    },
+    {
+      "canonicalFieldId": "person.arms_corps",
+      "action": "remove",
+      "reason": "Locked PoC exclusion for military-only/service-administration field."
+    },
+    {
+      "canonicalFieldId": "person.branch_trade",
+      "action": "remove",
+      "reason": "Locked PoC exclusion for military-only/service-administration field."
+    },
+    {
+      "canonicalFieldId": "person.commission_type",
+      "action": "remove",
+      "reason": "Locked PoC exclusion for military-only/service-administration field."
+    },
+    {
+      "canonicalFieldId": "person.commission_date",
+      "action": "remove",
+      "reason": "Locked PoC exclusion for military-only/service-administration field."
+    },
+    {
+      "canonicalFieldId": "person.total_service",
+      "action": "remove",
+      "reason": "Locked PoC exclusion for military-only/service-administration field."
+    },
+    {
+      "canonicalFieldId": "category.present",
+      "action": "remove",
+      "reason": "Locked PoC exclusion for military-only/service-administration field."
+    },
+    {
+      "canonicalFieldId": "category.board_fitness",
+      "action": "remove",
+      "reason": "Locked PoC exclusion for military-only/service-administration field."
+    },
+    {
+      "canonicalFieldId": "category.final",
+      "action": "remove",
+      "reason": "Locked PoC exclusion for military-only/service-administration field."
+    },
+    {
+      "canonicalFieldId": "exam.board_member_1",
+      "action": "remove",
+      "reason": "Locked PoC exclusion for military-only/service-administration field."
+    },
+    {
+      "canonicalFieldId": "exam.board_member_2",
+      "action": "remove",
+      "reason": "Locked PoC exclusion for military-only/service-administration field."
+    },
+    {
+      "canonicalFieldId": "exam.board_president",
+      "action": "remove",
+      "reason": "Locked PoC exclusion for military-only/service-administration field."
+    },
+    {
+      "canonicalFieldId": "actor.approving_authority",
+      "action": "remove",
+      "reason": "Locked PoC exclusion for military-only/service-administration field."
+    }
+  ],
+  "generatedEnvelopeFields": [
+    "exchange.transaction_id",
+    "exchange.package_id",
+    "exchange.direction",
+    "exchange.source_system",
+    "exchange.destination_system",
+    "exchange.timestamp",
+    "exchange.mapping_version",
+    "exchange.schema_version",
+    "exchange.input_hash",
+    "exchange.output_hash",
+    "provenance.*"
+  ],
+  "mappingVersion": "POC-MAP-0.1",
+  "xmlRepresentationVersion": "FHIR-INSPIRED-XML-0.1"
+}

@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "Dhanwantri Interoperability Demo"
+description = "A synthetic-data proof of concept that demonstrates one clinical encounter moving from i-Dhanwantri through a secure exchange workstation into Dhanwantri 3.0 ADN, with explicit transformation steps, provenance, and replayable exports."
+version = "1.0.0"
+id = "artifacts/dhanwantri-demo"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 21538
+
+[services.development]
+run = "pnpm --filter @workspace/dhanwantri-demo run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/dhanwantri-demo", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/dhanwantri-demo/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "21538"
+BASE_PATH = "/"
