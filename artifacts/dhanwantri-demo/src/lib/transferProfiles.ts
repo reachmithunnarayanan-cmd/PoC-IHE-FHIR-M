@@ -26,15 +26,26 @@ export type TransferFieldDefinition = {
   group: string;
   paths: string[];
   lockedFor?: TransferDirection[];
+  requiredFor?: TransferDirection[];
   defaultExcludedFor?: TransferDirection[];
-  enrichmentKey?: 'serviceNumber' | 'rank' | 'unit' | 'service';
+  enrichmentKey?: 'mii' | 'serviceNumber' | 'rank' | 'unit' | 'service';
   review?: boolean;
 };
 
 const lockedFromPublic = new Set([
-  'person.adn_personnel_number', 'person.rank', 'person.unit_ship', 'person.service',
+  'person.mii', 'person.adn_personnel_number', 'person.rank', 'person.unit_ship', 'person.service',
   'person.arms_corps', 'person.branch_trade', 'person.commission_type',
   'person.commission_date', 'person.total_service',
+  'person.individual_signature',
+  'actor.medical_specialist', 'actor.surgical_specialist', 'actor.gynaecologist',
+  'actor.dental_officer', 'actor.eye_specialist', 'actor.ent_specialist',
+  'actor.medical_attendant', 'actor.approving_authority', 'actor.perusing_authority',
+  'exam.approving_authority_place', 'exam.approving_authority_date',
+  'exam.perusing_authority_place', 'exam.perusing_authority_date',
+  'exam.final_place', 'exam.final_date', 'exam.medicine_date', 'exam.surgery_date',
+  'exam.gynaecology_date', 'exam.dental_date', 'exam.eye_date', 'exam.ent_date',
+  'exam.board_place_date', 'exam.board_member_1', 'exam.board_member_2',
+  'exam.board_president', 'exam.officer_acknowledgement',
 ]);
 const lockedFromAdn = new Set([
   ...lockedFromPublic,
@@ -62,11 +73,13 @@ const field = (
   label: string,
   group: string,
   paths: string[],
-  options: Pick<TransferFieldDefinition, 'lockedFor' | 'defaultExcludedFor' | 'enrichmentKey' | 'review'> = {},
+  options: Pick<TransferFieldDefinition, 'lockedFor' | 'requiredFor' | 'defaultExcludedFor' | 'enrichmentKey' | 'review'> = {},
 ): TransferFieldDefinition => ({ id, label, group, paths, ...options });
 
 const patientFields: TransferFieldDefinition[] = [
   field('person.source_patient_id', 'Synthetic patient reference', 'Identity', ['patient.id']),
+  field('person.uhid', 'UHID', 'Identity', ['patient.uhid']),
+  field('person.mii', 'Military Identity Identifier (MII)', 'Service', ['patient.mii', 'militaryFields.mii'], { lockedFor: ['public-to-adn', 'adn-to-public'] }),
   field('person.name', 'Name', 'Identity', ['patient.name', 'examination.values[person.name]'], { review: true }),
   field('person.date_of_birth', 'Date of birth', 'Identity', ['patient.dob', 'examination.values[person.date_of_birth]']),
   field('person.sex', 'Sex', 'Identity', ['patient.sex', 'examination.values[person.sex]']),
@@ -112,6 +125,7 @@ const formFields = Object.values(FORM_PAGES)
   }));
 
 const enrichmentFields: TransferFieldDefinition[] = [
+  field('enrichment.person.mii', 'Military Identity Identifier (MII)', 'Workstation enrichment', [], { enrichmentKey: 'mii', lockedFor: ['adn-to-public'], requiredFor: ['public-to-adn'] }),
   field('enrichment.person.adn_personnel_number', 'ADN personnel number', 'Workstation enrichment', [], { enrichmentKey: 'serviceNumber', lockedFor: ['adn-to-public'] }),
   field('enrichment.person.rank', 'Rank', 'Workstation enrichment', [], { enrichmentKey: 'rank', lockedFor: ['adn-to-public'] }),
   field('enrichment.person.unit_ship', 'Unit / ship', 'Workstation enrichment', [], { enrichmentKey: 'unit', lockedFor: ['adn-to-public'] }),
@@ -125,7 +139,7 @@ export const TRANSFER_FIELDS: TransferFieldDefinition[] = [
 ];
 
 export const TRANSFER_GROUPS = [...new Set(TRANSFER_FIELDS.map(item => item.group))];
-export const MAPPING_VERSION = '1.3';
+export const MAPPING_VERSION = '1.4';
 export const DEMO_OPERATOR = 'Demo workstation operator';
 
 export function createDefaultTransferProfiles(timestamp = new Date().toISOString()): TransferProfiles {
@@ -164,13 +178,17 @@ export function normalizeTransferProfiles(value: unknown): TransferProfiles {
     const candidate = raw[direction];
     if (!candidate || !Array.isArray(candidate.selectedFieldIds)) return fallback;
     const allowed = new Set(TRANSFER_FIELDS.filter(item => !item.lockedFor?.includes(direction)).map(item => item.id));
+    const required = TRANSFER_FIELDS.filter(item => item.requiredFor?.includes(direction)).map(item => item.id);
     return {
       ...fallback,
       ...candidate,
       name: typeof candidate.name === 'string' ? candidate.name : fallback.name,
       direction,
       version: Number.isInteger(candidate.version) && (candidate.version ?? 0) > 0 ? candidate.version! : fallback.version,
-      selectedFieldIds: [...new Set(candidate.selectedFieldIds.filter((id): id is string => typeof id === 'string' && allowed.has(id)))],
+      selectedFieldIds: [...new Set([
+        ...candidate.selectedFieldIds.filter((id): id is string => typeof id === 'string' && allowed.has(id)),
+        ...required,
+      ])],
       updatedBy: typeof candidate.updatedBy === 'string' ? candidate.updatedBy : fallback.updatedBy,
       updatedAt: typeof candidate.updatedAt === 'string' ? candidate.updatedAt : fallback.updatedAt,
     };
@@ -180,7 +198,8 @@ export function normalizeTransferProfiles(value: unknown): TransferProfiles {
 
 export function createAppliedProfile(profile: TransferProfile, timestamp = new Date().toISOString()): AppliedProfile {
   const locked = new Set(TRANSFER_FIELDS.filter(item => item.lockedFor?.includes(profile.direction)).map(item => item.id));
-  const selected = new Set(profile.selectedFieldIds.filter(id => !locked.has(id)));
+  const required = TRANSFER_FIELDS.filter(item => item.requiredFor?.includes(profile.direction)).map(item => item.id);
+  const selected = new Set([...profile.selectedFieldIds, ...required].filter(id => !locked.has(id)));
   const selectedFieldIds = TRANSFER_FIELDS.filter(item => selected.has(item.id)).map(item => item.id);
   return {
     name: profile.name,
@@ -201,8 +220,11 @@ export function normalizeAppliedProfile(value: unknown): AppliedProfile | null {
     || raw.mappingVersion !== MAPPING_VERSION
     || !Array.isArray(raw.selectedFieldIds)) return null;
   const locked = new Set(TRANSFER_FIELDS.filter(item => item.lockedFor?.includes(raw.direction!)).map(item => item.id));
-  const selectedFieldIds = [...new Set(raw.selectedFieldIds
-    .filter((id): id is string => typeof id === 'string' && TRANSFER_FIELDS.some(item => item.id === id) && !locked.has(id)))];
+  const required = TRANSFER_FIELDS.filter(item => item.requiredFor?.includes(raw.direction!)).map(item => item.id);
+  const selectedFieldIds = [...new Set([
+    ...raw.selectedFieldIds.filter((id): id is string => typeof id === 'string' && TRANSFER_FIELDS.some(item => item.id === id) && !locked.has(id)),
+    ...required,
+  ])];
   const profile: TransferProfile = {
     name: typeof raw.name === 'string' ? raw.name : 'Saved transfer profile',
     direction: raw.direction,
@@ -242,7 +264,8 @@ export function applyProfileToPackage<T extends Record<string, unknown>>(
 ): { package: T; availableFieldIds: string[]; unavailableFieldIds: string[] } {
   const output = JSON.parse(JSON.stringify(source)) as T;
   const locked = new Set(TRANSFER_FIELDS.filter(item => item.lockedFor?.includes(snapshot.direction)).map(item => item.id));
-  const selected = new Set(snapshot.selectedFieldIds.filter(id => !locked.has(id)));
+  const required = TRANSFER_FIELDS.filter(item => item.requiredFor?.includes(snapshot.direction)).map(item => item.id);
+  const selected = new Set([...snapshot.selectedFieldIds, ...required].filter(id => !locked.has(id)));
   const availableFieldIds: string[] = [];
   const unavailableFieldIds: string[] = [];
   for (const definition of TRANSFER_FIELDS) {

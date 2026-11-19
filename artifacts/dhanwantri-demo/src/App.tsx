@@ -2,13 +2,16 @@ import { type ChangeEvent, type FormEvent, type ReactNode, useEffect, useState }
 import { Link, Route, Switch, useLocation, Router as WouterRouter } from 'wouter';
 import {
   Activity, ArrowDownToLine, ArrowLeftRight, ArrowRight, BadgeCheck, ClipboardList,
-  FileJson, FileText, FolderOpen, Plus, Printer, RotateCcw,
+  FileText, FolderOpen, Plus, RotateCcw,
   ShieldAlert, ShieldCheck, Stethoscope, Trash2, Upload, UserRound, Workflow,
 } from 'lucide-react';
 import {
-  blankExaminationValues, FORM_PAGES, makeBlankExamination, PME_TO_AME_FIELDS,
+  blankExaminationValues, FORM_PAGES, makeBlankExamination, MILITARY_ONLY_EXAM_FIELDS, PME_TO_AME_FIELDS,
   type ExaminationType,
 } from './lib/afmsfForms';
+import {
+  downloadAfmsfPdf, downloadExchangeXml, isSanitisedPublicExchange, parseExchangeXml, sanitizePublicExchange,
+} from './lib/exchange';
 import {
   applyProfileToPackage, createAppliedProfile, createDefaultTransferProfiles,
   DEMO_OPERATOR, MAPPING_VERSION, normalizeAppliedProfile, normalizeTransferProfiles, selectedEnrichmentKeys,
@@ -17,8 +20,8 @@ import {
 } from './lib/transferProfiles';
 
 type Patient = {
-  id: string; name: string; dob: string; sex: string; phone: string; email: string;
-  address: string; serviceNumber: string; rank: string; unit: string; service: string;
+  id: string; uhid: string; name: string; dob: string; sex: string; phone: string; email: string;
+  address: string; mii: string; serviceNumber: string; rank: string; unit: string; service: string;
 };
 type Encounter = {
   id: string; date: string; complaint: string; history: string; findings: string;
@@ -28,6 +31,7 @@ type Provenance = { field: string; origin: 'captured' | 'imported' | 'enriched' 
 type ExchangePackage = {
   kind: 'dhanwantri-exchange'; version: string; transactionId: string; source: string;
   destination: string; createdAt: string; profile: string; patient: Partial<Patient>;
+  mappingVersion?: string; direction?: string;
   encounter: Partial<Encounter>; provenance: Provenance[]; militaryFields?: Record<string, string>;
   examination?: Examination;
   transferAudit?: {
@@ -45,13 +49,13 @@ type TransformationReport = {
 };
 type Examination = {
   type: ExaminationType; date: string; place: string; authority: string; pastHistory: string;
-  generalFindings: string; finalObservations: string; category: string; officer: string;
+  generalFindings: string; finalObservations: string; category: string; officer: string; patientUhid: string;
   examinationRef: string; templateRef: string; provenance: Record<string, string>;
   values: Record<string, string>; savedAt: string; documentRef: string; documentCreatedAt: string;
   sourceExaminationRef: string; sourceTransactionRef: string;
 };
 type DemoState = {
-  patient: Patient; encounter: Encounter; recordSaved: boolean; publicPackage: ExchangePackage | null;
+  patient: Patient; encounter: Encounter; recordSaved: boolean; publicPackage: ExchangePackage | null; publicReceivedPackage: ExchangePackage | null;
   workstationPublicPackage: ExchangePackage | null;
   workstationPackage: ExchangePackage | null; adnPackage: ExchangePackage | null;
   adnOutboundPackage: ExchangePackage | null; publicReleasePackage: ExchangePackage | null;
@@ -68,9 +72,9 @@ const blankExam = (type: ExaminationType = 'PME'): Examination => makeBlankExami
   type === 'PME' ? 'AFMSF-3A-Ver-2002' : 'AFMSF-3B-Ver-2002',
 );
 const initialState = (): DemoState => ({
-  patient: { id: 'IDH-SYN-2048', name: 'Aarav Sen', dob: '1992-08-14', sex: 'Male', phone: '', email: '', address: '', serviceNumber: '', rank: '', unit: '', service: '' },
+  patient: { id: 'IDH-SYN-2048', uhid: 'UHID-SYN-2048', name: 'Aarav Sen', dob: '1992-08-14', sex: 'Male', phone: '', email: '', address: '', mii: '', serviceNumber: '', rank: '', unit: '', service: '' },
   encounter: { id: makeId('ENC'), date: '', complaint: '', history: '', findings: '', assessment: '', plan: '', clinician: '' },
-  recordSaved: false, publicPackage: null, workstationPublicPackage: null,
+  recordSaved: false, publicPackage: null, publicReceivedPackage: null, workstationPublicPackage: null,
   workstationPackage: null, adnPackage: null,
   adnOutboundPackage: null, publicReleasePackage: null, report: null,
   examination: blankExam(), startedAt: now(),
@@ -112,6 +116,7 @@ function normalizeExamination(value: unknown): Examination {
     ...fallback,
     ...Object.fromEntries(['date', 'place', 'authority', 'pastHistory', 'generalFindings', 'finalObservations', 'category', 'officer']
       .map(key => [key, typeof raw[key] === 'string' ? raw[key] as string : ''])),
+    patientUhid: typeof raw.patientUhid === 'string' ? raw.patientUhid : '',
     type,
     examinationRef: typeof raw.examinationRef === 'string' && raw.examinationRef ? raw.examinationRef : fallback.examinationRef,
     templateRef: typeof raw.templateRef === 'string' && raw.templateRef ? raw.templateRef : fallback.templateRef,
@@ -129,9 +134,12 @@ function loadState(): DemoState {
     const value = localStorage.getItem(STORAGE_KEY);
     if (value) {
       const parsed = JSON.parse(value) as Partial<DemoState>;
+      const defaults = initialState();
       return {
-        ...initialState(),
+        ...defaults,
         ...parsed,
+        patient: { ...defaults.patient, ...(parsed.patient ?? {}) },
+        encounter: { ...defaults.encounter, ...(parsed.encounter ?? {}) },
         examination: normalizeExamination(parsed.examination),
         transferProfiles: normalizeTransferProfiles(parsed.transferProfiles),
         appliedProfile: normalizeAppliedProfile(parsed.appliedProfile),
@@ -140,12 +148,22 @@ function loadState(): DemoState {
   } catch { /* recover with a clean local demo */ }
   return initialState();
 }
-function downloadJson(filename: string, data: unknown) {
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url; link.download = filename; link.click();
-  URL.revokeObjectURL(url);
+function downloadExchangePair(pkg: ExchangePackage, suffix: string): void {
+  const base = `${pkg.transactionId}-${suffix}`;
+  downloadExchangeXml(`${base}.xml`, pkg as unknown as Record<string, unknown>);
+  downloadAfmsfPdf(`${base}.pdf`, pkg as unknown as Record<string, unknown>);
+}
+function publicClinicalCopy(examination: Examination): Examination {
+  const copy = {
+    ...examination,
+    values: { ...examination.values },
+    provenance: { ...examination.provenance },
+  };
+  MILITARY_ONLY_EXAM_FIELDS.forEach(key => {
+    delete copy.values[key];
+    delete copy.provenance[key];
+  });
+  return copy;
 }
 function valueAtPath(source: unknown, path: string): unknown {
   const parts = path.match(/[^.[\]]+|\[[^\]]+\]/g)?.map(part => part.startsWith('[') ? part.slice(1, -1) : part) ?? [];
@@ -168,7 +186,10 @@ function readPackage(file: File, success: (pkg: ExchangePackage) => void, failur
   const reader = new FileReader();
   reader.onload = () => {
     try {
-      const raw = JSON.parse(String(reader.result)) as unknown;
+      const sourceText = String(reader.result);
+      const raw = file.name.toLowerCase().endsWith('.xml')
+        ? parseExchangeXml(sourceText)
+        : JSON.parse(sourceText) as unknown;
       if (
         !isRecord(raw)
         || raw.kind !== 'dhanwantri-exchange'
@@ -226,7 +247,7 @@ function App() {
   const [state, setState] = useState<DemoState>(loadState);
   const [path, setLocation] = useLocation();
   const [notice, setNotice] = useState('');
-  const [military, setMilitary] = useState({ serviceNumber: '', rank: '', unit: '', service: '' });
+  const [military, setMilitary] = useState({ mii: '', serviceNumber: '', rank: '', unit: '', service: '' });
   const [importError, setImportError] = useState('');
   const [adnTab, setAdnTab] = useState<'record' | 'form'>('record');
   const [profileDirection, setProfileDirection] = useState<TransferDirection>('public-to-adn');
@@ -244,7 +265,7 @@ function App() {
   const reset = () => {
     const fresh = initialState();
     setState(fresh);
-    setMilitary({ serviceNumber: '', rank: '', unit: '', service: '' });
+    setMilitary({ mii: '', serviceNumber: '', rank: '', unit: '', service: '' });
     setProfileDirection('public-to-adn');
     setProfileSearch('');
     setFormPage(1);
@@ -254,7 +275,8 @@ function App() {
   const updateProfileField = (fieldId: string, selected: boolean) => {
     const profile = state.transferProfiles[profileDirection];
     const definition = TRANSFER_FIELDS.find(item => item.id === fieldId);
-    if (!definition || definition.lockedFor?.includes(profileDirection)) return;
+    if (!definition || definition.lockedFor?.includes(profileDirection)
+      || (definition.requiredFor?.includes(profileDirection) && !selected)) return;
     const selectedIds = new Set(profile.selectedFieldIds);
     if (selected) selectedIds.add(fieldId);
     else selectedIds.delete(fieldId);
@@ -274,7 +296,11 @@ function App() {
     const profile = state.transferProfiles[profileDirection];
     const selectedIds = new Set(profile.selectedFieldIds);
     TRANSFER_FIELDS.filter(item => item.group === group && !item.lockedFor?.includes(profileDirection))
-      .forEach(item => selected ? selectedIds.add(item.id) : selectedIds.delete(item.id));
+      .forEach(item => {
+        if (selected || !item.requiredFor?.includes(profileDirection)) {
+          selected ? selectedIds.add(item.id) : selectedIds.delete(item.id);
+        }
+      });
     update('transferProfiles', {
       ...state.transferProfiles,
       [profileDirection]: {
@@ -318,21 +344,52 @@ function App() {
     setNotice('Structured encounter saved locally.');
   };
   const exportPublic = () => {
-    if (!state.recordSaved) { setNotice('Save the structured encounter before exporting.'); return; }
+    if (!state.examination.savedAt) {
+      setNotice('Save the PME/AME examination before exporting.');
+      return;
+    }
+    const publicPatient: Partial<Patient> = {
+      id: state.patient.id,
+      uhid: state.patient.uhid,
+      name: state.patient.name,
+      dob: state.patient.dob,
+      sex: state.patient.sex,
+      phone: state.patient.phone,
+      email: state.patient.email,
+      address: state.patient.address,
+    };
     const pkg: ExchangePackage = {
-      kind: 'dhanwantri-exchange', version: '1.0', transactionId: makeId('TXN'),
+      kind: 'dhanwantri-exchange', version: '2.0', transactionId: makeId('TXN'),
       source: 'i-Dhanwantri', destination: 'Secure Data Exchange Workstation',
-      createdAt: now(), profile: 'FHIR-inspired clinical exchange · PoC v1',
-      patient: { ...state.patient }, encounter: { ...state.encounter },
+      createdAt: now(), profile: 'dhanwantri-poc-exchange · v1.0',
+      mappingVersion: MAPPING_VERSION,
+      direction: 'i-Dhanwantri → Secure Data Exchange Workstation',
+      patient: publicPatient, encounter: { ...state.encounter },
+      examination: publicClinicalCopy(state.examination),
       provenance: [
-        ...Object.entries(state.patient).filter(([, value]) => Boolean(value)).map(([field]) => ({ field: `patient.${field}`, origin: 'captured' as const, source: 'i-Dhanwantri synthetic registration', at: now() })),
+        ...Object.entries(publicPatient).filter(([, value]) => Boolean(value)).map(([field]) => ({ field: `patient.${field}`, origin: 'captured' as const, source: 'i-Dhanwantri synthetic registration', at: now() })),
         ...Object.entries(state.encounter).filter(([, value]) => Boolean(value)).map(([field]) => ({ field: `encounter.${field}`, origin: 'captured' as const, source: 'i-Dhanwantri structured encounter', at: now() })),
       ],
     };
     update('publicPackage', pkg);
-    downloadJson(`${pkg.transactionId}-public-exchange.json`, pkg);
-    setNotice('Public-side package exported as JSON.');
+    update('publicReceivedPackage', null);
+    downloadExchangePair(pkg, 'public-clinical-exchange');
+    setNotice('Public clinical XML and AFMSF PDF downloaded with one transaction ID.');
   };
+  const importPublicReturn = (file: File) => readPackage(file, pkg => {
+    if (pkg.source !== 'Secure Data Exchange Workstation' || pkg.destination !== 'i-Dhanwantri public side') {
+      setImportError('Choose the sanitised public-release XML produced by the workstation.');
+      return;
+    }
+    if (!pkg.patient.uhid?.trim() || !pkg.examination
+      || !isSanitisedPublicExchange(pkg as unknown as Record<string, unknown>)) {
+      setImportError('The returned package is missing UHID/examination data or still contains military-only fields.');
+      return;
+    }
+    update('publicReceivedPackage', pkg);
+    setImportError('');
+    setNotice('Sanitised return imported. The original i-Dhanwantri source record was not changed.');
+  }, setImportError);
   const importWorkstation = (file: File) => readPackage(file, pkg => {
     const fromAdn = pkg.source === 'Dhanwantri 3.0 ADN';
     if (!fromAdn && pkg.source !== 'i-Dhanwantri') {
@@ -368,6 +425,17 @@ function App() {
         : 'Import an ADN-origin package before stripping fields.');
       return;
     }
+    if (operation === 'add' && (!source.patient.uhid?.trim()
+      || !source.examination?.savedAt
+      || !['PME', 'AME'].includes(source.examination.type)
+      || source.examination.patientUhid !== source.patient.uhid)) {
+      setNotice('The incoming package needs a UHID and a saved PME/AME examination before military enrichment.');
+      return;
+    }
+    if (operation === 'add' && !military.mii.trim()) {
+      setNotice('Enter the required MII at the workstation before creating the military record.');
+      return;
+    }
     if (!state.appliedProfile || state.appliedProfile.direction !== direction) {
       setNotice('Apply the matching direction profile before creating an outgoing package.');
       return;
@@ -391,7 +459,10 @@ function App() {
     const unavailableFields = [...projected.unavailableFieldIds, ...unavailableEnrichment];
     const actions: string[] = [
       `Applied ${appliedProfile.name} · profile v${appliedProfile.version} · mapping v${appliedProfile.mappingVersion}.`,
-      `${projected.availableFieldIds.length + availableEnrichment.length} selected source/enrichment fields are available; ${unavailableFields.length} selected fields are unavailable.`,
+      source.examination
+        ? `Imported ${source.examination.type === 'PME' ? 'AFMSF 3A / PME' : 'AFMSF 3B / AME'} ${source.examination.examinationRef} for UHID ${source.patient.uhid || 'missing'}.`
+        : 'No structured examination was present in the imported package.',
+      `Mapped ${projected.availableFieldIds.length} available source fields and ${availableEnrichment.length} enrichment fields; ${unavailableFields.length} selected fields are blank or unavailable.`,
       'Deselecting fields affected only this outgoing copy; the imported source package remains unchanged.',
     ];
     let militaryFields: Record<string, string> = {};
@@ -431,11 +502,11 @@ function App() {
         });
       }
       actions.push(Object.keys(militaryFields).length
-        ? `Add MII/PII: enriched ${Object.keys(militaryFields).join(', ')} on the outgoing copy.`
-        : 'Add MII/PII: no selected workstation-enrichment values were populated.');
+        ? `Added workstation military fields: ${Object.keys(militaryFields).join(', ')}.`
+        : 'No workstation military enrichment values were populated.');
     } else {
       militaryFields = {};
-      actions.push(`Strip MII/PII: excluded ${appliedProfile.excludedFieldIds.length} fields from the outgoing copy; locked military and authority fields remain excluded.`);
+      actions.push(`Sanitised the outgoing copy; ${appliedProfile.excludedFieldIds.length} fields were excluded by the applied profile and military/authority fields were removed.`);
     }
     const presentAvailable = new Set(projected.availableFieldIds);
     availableEnrichment.forEach(id => presentAvailable.add(id));
@@ -443,30 +514,33 @@ function App() {
     actions.push(`Field selection: ${selectedFields.length} selected, ${appliedProfile.excludedFieldIds.length} excluded, ${unavailableFields.length} selected but unavailable.`);
     const outgoingTransactionId = makeId('TXN');
     const report: TransformationReport = {
-      direction: operation === 'add' ? 'Public → ADN · Add MII/PII' : 'ADN → Public · Strip MII/PII',
+      direction: operation === 'add' ? 'Public → ADN · workstation enrichment' : 'ADN → Public · sanitised release',
       transactionId: outgoingTransactionId,
       source: source.source,
       destination: operation === 'add' ? 'Dhanwantri 3.0 ADN' : 'i-Dhanwantri public side',
       operator: DEMO_OPERATOR, time: now(), actions,
       warnings: [
         'Illustrative PoC rules only; not an approved sanitisation policy.',
-        'FHIR-inspired label is representational and does not claim FHIR or ABDM conformance.',
+        'Dhanwantri PoC XML is a custom format and does not claim FHIR, CDA, CCD or ABDM conformance.',
         'Missing clinical values were left blank. Review free text for identifiers before any real release.',
       ],
       result: 'Outgoing copy prepared · not standards-validated',
-      exportStatus: 'Prepared · JSON not yet exported',
+      exportStatus: 'Prepared · paired XML/PDF not yet downloaded',
       selectedFields: [...selectedFields],
       excludedFields: [...appliedProfile.excludedFieldIds],
       unavailableFields,
       profile: appliedProfile,
     };
-    const out: ExchangePackage = {
+    const outBase: ExchangePackage = {
       ...preparedSource,
+      version: '2.0',
       transactionId: outgoingTransactionId,
       source: 'Secure Data Exchange Workstation',
       destination: report.destination,
       createdAt: now(),
       profile: `${appliedProfile.name} · profile v${appliedProfile.version}`,
+      mappingVersion: MAPPING_VERSION,
+      direction: report.direction,
       patient,
       provenance,
       militaryFields,
@@ -478,6 +552,9 @@ function App() {
         action: operation === 'add' ? 'add-enrich' : 'remove',
       },
     };
+    const out = (operation === 'strip'
+      ? sanitizePublicExchange(outBase as unknown as Record<string, unknown>)
+      : outBase) as unknown as ExchangePackage;
     update('workstationPackage', out);
     if (operation === 'add') {
       update('publicReleasePackage', null);
@@ -485,7 +562,7 @@ function App() {
       update('publicReleasePackage', out);
     }
     update('report', report);
-    setNotice(operation === 'add' ? 'Add MII/PII operation recorded.' : 'Strip MII/PII operation recorded on the outgoing copy.');
+    setNotice(operation === 'add' ? 'Workstation enrichment recorded on a copy; the public source remains unchanged.' : 'Military-only values removed from the outgoing copy; the ADN source remains unchanged.');
   };
   const importAdn = (file: File) => readPackage(file, pkg => {
     if (pkg.destination !== 'Dhanwantri 3.0 ADN') {
@@ -504,38 +581,55 @@ function App() {
   }, setImportError);
   const exportAdn = () => {
     if (!state.workstationPackage) { setNotice('Run an explicit workstation transformation before exporting.'); return; }
-    downloadJson(`${state.workstationPackage.transactionId}-adn-ingest.json`, state.workstationPackage);
-    if (state.report) update('report', { ...state.report, exportStatus: 'Exported as ADN-ingest JSON' });
-    setNotice('ADN ingest package exported as JSON.');
+    downloadExchangePair(state.workstationPackage, 'adn-ingest');
+    if (state.report) update('report', { ...state.report, exportStatus: 'XML + AFMSF PDF downloaded' });
+    setNotice('ADN ingest XML and matching AFMSF PDF downloaded.');
   };
   const exportAdnForSanitisation = () => {
     if (!state.adnPackage) { setNotice('Import an ADN ingest package before preparing an outbound package.'); return; }
     const pkg: ExchangePackage = {
       ...state.adnPackage,
+      version: '2.0',
       transactionId: makeId('TXN'),
       source: 'Dhanwantri 3.0 ADN',
       destination: 'Secure Data Exchange Workstation',
       createdAt: now(),
       profile: 'ADN outbound package · awaiting workstation sanitisation',
+      mappingVersion: MAPPING_VERSION,
+      direction: 'Dhanwantri 3.0 ADN → Secure Data Exchange Workstation',
       examination: { ...state.examination },
     };
-    downloadJson(`${pkg.transactionId}-adn-outbound.json`, pkg);
-    setNotice('ADN outbound package exported. Import it at the workstation for sanitisation.');
+    downloadExchangePair(pkg, 'adn-outbound');
+    setNotice('ADN outbound XML and AFMSF PDF downloaded for workstation sanitisation.');
   };
   const exportPublicRelease = () => {
-    if (!state.publicReleasePackage) { setNotice('Run Strip MII/PII before exporting the public package.'); return; }
-    downloadJson(`${state.publicReleasePackage.transactionId}-public-release.json`, state.publicReleasePackage);
-    if (state.report) update('report', { ...state.report, exportStatus: 'Exported as public-release JSON' });
-    setNotice('Sanitised public-side package exported as JSON.');
+    if (!state.publicReleasePackage) { setNotice('Run workstation sanitisation before exporting the public package.'); return; }
+    downloadExchangePair(state.publicReleasePackage, 'sanitised-public-release');
+    if (state.report) update('report', { ...state.report, exportStatus: 'Sanitised XML + AFMSF PDF downloaded' });
+    setNotice('Sanitised XML and matching AFMSF PDF downloaded.');
   };
-  const updatePatient = (field: keyof Patient, value: string) => update('patient', { ...state.patient, [field]: value });
+  const updatePatient = (field: keyof Patient, value: string) => {
+    update('patient', { ...state.patient, [field]: value });
+    update('recordSaved', false);
+    update('examination', { ...state.examination, savedAt: '', documentRef: '', documentCreatedAt: '' });
+  };
   const updateEncounter = (field: keyof Encounter, value: string) => {
     update('encounter', { ...state.encounter, [field]: value });
     update('recordSaved', false);
+    update('examination', { ...state.examination, savedAt: '', documentRef: '', documentCreatedAt: '' });
   };
   const updateExam = (field: string, value: string) => {
-    const provenance = { ...state.examination.provenance, [field]: 'ADN-entered / amended' };
+    const provenance = { ...state.examination.provenance, [field]: 'Captured by i-Dhanwantri clinician' };
     const values = { ...state.examination.values, [field]: value };
+    const patientFields: Partial<Record<string, keyof Patient>> = {
+      'person.name': 'name',
+      'person.date_of_birth': 'dob',
+      'person.sex': 'sex',
+    };
+    if (patientFields[field]) {
+      update('patient', { ...state.patient, [patientFields[field]!]: value });
+      update('recordSaved', false);
+    }
     if (field === 'dental.tooth_chart') {
       let markings: Record<string, string> = {};
       try {
@@ -561,23 +655,28 @@ function App() {
     if (state.examination.type === 'PME') return;
     update('examination', blankExam('PME'));
     setFormPage(1);
-    setNotice('Started a blank PME record. No AME-only values were carried back.');
+    setNotice('Started a blank PME record in i-Dhanwantri. No AME-only values were carried back.');
   };
   const saveExamination = () => {
-    update('examination', { ...state.examination, savedAt: now(), documentRef: '', documentCreatedAt: '' });
-    setNotice('Structured examination record saved locally.');
-  };
-  const printExamination = () => {
-    if (!state.examination.savedAt) {
-      setNotice('Save the structured examination record before printing.');
-      return;
-    }
-    update('examination', {
-      ...state.examination,
-      documentRef: makeId('DOC'),
-      documentCreatedAt: now(),
+    const values = { ...state.examination.values };
+    const provenance = { ...state.examination.provenance };
+    const capturedValues: Record<string, string> = {
+      'person.name': state.patient.name,
+      'person.date_of_birth': state.patient.dob,
+      'person.sex': state.patient.sex,
+      'clinical.past_medical_history': state.encounter.history,
+      'clinical.general_observations': state.encounter.findings,
+      'clinical.final_observations': state.encounter.assessment,
+      'exam.date': state.encounter.date,
+    };
+    Object.entries(capturedValues).forEach(([key, value]) => {
+      if (value && !values[key]?.trim()) {
+        values[key] = value;
+        provenance[key] = 'Imported from saved i-Dhanwantri registration / encounter';
+      }
     });
-    window.setTimeout(() => window.print(), 50);
+    update('examination', { ...state.examination, patientUhid: state.patient.uhid, values, provenance, savedAt: now(), documentRef: '', documentCreatedAt: '' });
+    setNotice('Structured clinical examination saved locally in i-Dhanwantri.');
   };
   const createAmE = () => {
     const old = state.examination;
@@ -598,13 +697,12 @@ function App() {
     projected.values = values;
     projected.provenance = provenance;
     projected.sourceExaminationRef = old.examinationRef;
-    projected.sourceTransactionRef = state.adnPackage?.transactionId ?? '';
+    projected.sourceTransactionRef = state.publicPackage?.transactionId ?? '';
     update('examination', projected);
     setFormPage(1);
-    setAdnTab('form');
     const ameFields = [...new Map(FORM_PAGES.AME.flatMap(page => page.sections.flatMap(group => group.fields)).map(item => [item.key, item])).values()];
     const blankCount = ameFields.filter(item => !projected.values[item.key]?.trim()).length;
-    setNotice(`AME draft created; ${blankCount} fields remain blank for review or separate completion.`);
+    setNotice(`AME draft created in i-Dhanwantri; ${blankCount} fields remain blank for review or separate completion.`);
   };
   const currentPortal = path.startsWith('/workstation') ? 'workstation' : path.startsWith('/adn') ? 'adn' : 'public';
   const patientPackage = state.adnPackage;
@@ -613,9 +711,6 @@ function App() {
   const encounter = patientPackage?.encounter ?? state.encounter;
   const provenanceFor = (field: string) => patientPackage?.provenance?.find(item => item.field === field);
   const activeFormPages = FORM_PAGES[state.examination.type];
-  const activeFormPage = activeFormPages.find(page => page.number === formPage) ?? activeFormPages[0];
-  const allFormFields = [...new Map(activeFormPages.flatMap(page => page.sections.flatMap(group => group.fields)).map(item => [item.key, item])).values()];
-  const blankFormFieldCount = allFormFields.filter(item => !state.examination.values[item.key]?.trim()).length;
   const profile = state.transferProfiles[profileDirection];
   const profileSelected = new Set(profile.selectedFieldIds);
   const matchingFields = TRANSFER_FIELDS.filter(item => (
@@ -632,9 +727,12 @@ function App() {
     : [];
   const requiredTransferFields = workstationInput ? [
     ['patient.id', workstationInput.patient.id],
+    ['patient.uhid', workstationInput.patient.uhid],
     ['patient.name', workstationInput.patient.name],
     ['encounter.id', workstationInput.encounter.id],
-    ['encounter.date', workstationInput.encounter.date],
+    ['examination.patientUhid', workstationInput.examination?.patientUhid === workstationInput.patient.uhid ? workstationInput.examination?.patientUhid : ''],
+    ['examination.savedAt', workstationInput.examination?.savedAt],
+    ['examination.type', workstationInput.examination?.type],
   ].filter(([, value]) => !String(value ?? '').trim()).map(([field]) => String(field)) : [];
   const expectedProfileDirection: TransferDirection | null = state.adnOutboundPackage
     ? 'adn-to-public'
@@ -654,7 +752,7 @@ function App() {
             <section className="hero-start surface">
               <div className="eyebrow">Empowered committee demonstration · Local-only PoC</div>
               <h1>i-Dhanwantri<br />↔ Dhanwantri 3.0 ADN</h1>
-              <p>A synthetic clinical record moves through the Secure Data Exchange Workstation for review, mapping, enrichment, and manual package transfer.</p>
+              <p>A synthetic PME or AME is captured in i-Dhanwantri, enriched at the Secure Data Exchange Workstation, received for review in ADN, then sanitised for the public return journey.</p>
               <div className="btn-row">
                 <Link href="/idh" className="btn btn-primary" data-testid="link-start-idh"><Stethoscope size={15} /> Open i-Dhanwantri <ArrowRight size={15} /></Link>
                 <button className="btn" onClick={reset} data-testid="button-reset-demo"><RotateCcw size={14} /> Reset / replay</button>
@@ -662,31 +760,31 @@ function App() {
               <div className="signature">IDH-2048 · SYNTHETIC CASE · LOCAL BROWSER STORAGE</div>
             </section>
             <div className="flowline" aria-label="Journey status">
-              <div className={`flowstep ${state.recordSaved ? 'done' : 'current'}`}><span className="step-no">01 — CAPTURE</span><b>i-Dhanwantri</b><span>{state.recordSaved ? 'Structured record saved' : 'Registration and encounter'}</span></div>
+              <div className={`flowstep ${state.recordSaved || state.examination.savedAt ? 'done' : 'current'}`}><span className="step-no">01 — CAPTURE</span><b>i-Dhanwantri</b><span>{state.examination.savedAt ? 'PME / AME examination saved' : state.recordSaved ? 'Clinical encounter saved' : 'Registration and examination'}</span></div>
               <div className={`flowstep ${state.workstationPackage ? 'done' : state.workstationPublicPackage || state.adnOutboundPackage ? 'current' : ''}`}><span className="step-no">02 — TRANSFORM</span><b>Exchange Workstation</b><span>{state.publicReleasePackage ? 'Sanitised public package ready' : state.workstationPackage ? 'Report recorded · package ready' : state.workstationPublicPackage ? 'Public package imported' : state.adnOutboundPackage ? 'ADN package imported' : state.publicPackage ? 'Public package exported · import next' : 'Import, validate, map'}</span></div>
-              <div className={`flowstep ${state.adnPackage ? 'done' : ''}`}><span className="step-no">03 — REUSE</span><b>Dhanwantri 3.0 ADN</b><span>{state.adnPackage ? 'Package available for examination' : 'Import and complete AFMSF form'}</span></div>
+              <div className={`flowstep ${state.adnPackage ? 'done' : ''}`}><span className="step-no">03 — REVIEW</span><b>Dhanwantri 3.0 ADN</b><span>{state.adnPackage ? 'Completed AFMSF record received' : 'Receive and review the completed form'}</span></div>
             </div>
             <div className="journey-layout">
               <div className="grid-three">
-                <article className="surface portal-card public-card"><span className="card-number">PORTAL 01 / PUBLIC SIDE</span><h3>i-Dhanwantri</h3><p>Register the synthetic patient, capture one structured encounter, then export its exchange package.</p><Link href="/idh">Open clinical workspace →</Link></article>
+                <article className="surface portal-card public-card"><span className="card-number">PORTAL 01 / PUBLIC SIDE</span><h3>i-Dhanwantri</h3><p>Register the synthetic patient with UHID and capture the PME or AME clinical form.</p><Link href="/idh">Open clinical workspace →</Link></article>
                 <article className="surface portal-card ws-card"><span className="card-number">PORTAL 02 / CONTROLLED WORKSTATION</span><h3>Secure Data Exchange</h3><p>Inspect source fields, run a distinct transformation and retain a human-readable operator report.</p><Link href="/workstation">Open transfer console →</Link></article>
-                <article className="surface portal-card adn-card"><span className="card-number">PORTAL 03 / ADN SIDE</span><h3>Dhanwantri 3.0 ADN</h3><p>Import the receiving package, inspect field provenance and complete a PME or AME demo form.</p><Link href="/adn">Open medical record →</Link></article>
+                <article className="surface portal-card adn-card"><span className="card-number">PORTAL 03 / ADN SIDE</span><h3>Dhanwantri 3.0 ADN</h3><p>Receive the workstation-enriched AFMSF record and review its clinical and military sections.</p><Link href="/adn">Open medical record →</Link></article>
               </div>
               <aside className="surface panel-pad">
                 <div className="eyebrow">Journey checkpoint</div><h2 className="section-title" style={{ marginTop: 8 }}>Current demo state</h2>
                 <div className="record-row"><div><div className="record-label">Synthetic patient</div><div className="record-value">{state.patient.name}</div></div><span className="tag">REGISTERED</span></div>
                 <div className="record-row"><div><div className="record-label">Clinical record</div><div className="record-value">{state.recordSaved ? 'Saved' : 'Not yet saved'}</div></div><Activity size={16} /></div>
                 <div className="record-row"><div><div className="record-label">Exchange transaction</div><div className="record-value mono">{state.publicReleasePackage?.transactionId ?? state.workstationPackage?.transactionId ?? workstationInput?.transactionId ?? state.publicPackage?.transactionId ?? '—'}</div></div><ArrowLeftRight size={16} /></div>
-                <div className="muted-note" style={{ marginTop: 16 }}>Local browser demo only. Package movement is an explicit JSON download and import, not a real network connection.</div>
+                <div className="muted-note" style={{ marginTop: 16 }}>Local browser demo only. Package movement uses explicit XML download and import; paired PDFs are generated from the same record. No real network connection is made.</div>
               </aside>
             </div>
-            <p className="signature">FHIR-INSPIRED REPRESENTATION · NOT FORMALLY FHIR / ABDM CONFORMANT</p>
+            <p className="signature">DHANWANTRI POC XML · CUSTOM FORMAT · NOT FHIR / CDA / CCD CONFORMANT</p>
           </main>
         </Route>
         <Route path="/idh">
           <PortalHeader active="idh" />
           <main className="page-wrap">
-            <PageHeading kicker="Internet-side HIS · Clinical capture" title="Patient registration and clinical encounter" description="Synthetic patient registration and encounter capture. Save the structured record before creating a package for the workstation." />
+            <PageHeading kicker="i-Dhanwantri · Public-domain clinical capture" title="Patient registration and PME / AME" description="Register the synthetic patient, confirm the UHID, and capture the complete clinical examination here before transfer." />
             <div className="grid-two">
               <div>
                 <section className="surface panel-pad">
@@ -694,6 +792,7 @@ function App() {
                   <div className="field-grid">
                     <Field label="Patient name" value={state.patient.name} onChange={v => updatePatient('name', v)} testId="input-patient-name" />
                     <Field label="Synthetic patient reference" value={state.patient.id} onChange={v => updatePatient('id', v)} testId="input-patient-id" />
+                    <Field label="UHID · Unique Health Identifier" value={state.patient.uhid} onChange={v => updatePatient('uhid', v)} testId="input-patient-uhid" />
                     <Field label="Date of birth" type="date" value={state.patient.dob} onChange={v => updatePatient('dob', v)} testId="input-patient-dob" />
                     <Field label="Sex" value={state.patient.sex} onChange={v => updatePatient('sex', v)} testId="input-patient-sex" />
                     <Field label="Contact phone" value={state.patient.phone} onChange={v => updatePatient('phone', v)} testId="input-patient-phone" />
@@ -717,30 +816,52 @@ function App() {
                     {state.recordSaved && <span className="tag" data-testid="status-record-saved">SAVED · {state.encounter.id}</span>}
                   </div>
                 </form>
+                <ClinicalCapture
+                  examination={state.examination}
+                  patient={state.patient}
+                  formPage={formPage}
+                  setFormPage={setFormPage}
+                  onUpdate={updateExam}
+                  onUhidChange={value => updatePatient('uhid', value)}
+                  onSelectPme={selectPme}
+                  onCreateAme={createAmE}
+                  onSave={saveExamination}
+                />
               </div>
               <aside>
                 <section className="surface panel-pad">
-                  <div className="eyebrow">03 / Export centre</div><h2 className="section-title" style={{ marginTop: 8 }}>Purpose-specific output</h2><p className="section-sub">Create an explicit JSON package for manual import into the workstation.</p>
-                  <div className="record-row"><div><div className="record-label">Interchange artifact</div><div className="record-value">FHIR-inspired JSON package</div></div><FileJson size={17} /></div>
-                  <div className="record-row"><div><div className="record-label">Profile label</div><div className="record-value">PoC clinical exchange · v1</div></div><span className="tag">REPRESENTATIONAL</span></div>
-                  <button className="btn btn-primary" style={{ width: '100%', marginTop: 16 }} onClick={exportPublic} disabled={!state.recordSaved} data-testid="button-export-public"><ArrowDownToLine size={15} /> Export for ADN workstation</button>
-                  {!state.recordSaved && <p className="section-sub" style={{ margin: '10px 0 0' }}>Save the encounter to enable package export.</p>}
-                  {state.publicPackage && <div className="muted-note" style={{ marginTop: 16 }}>Latest package · <span className="mono">{state.publicPackage.transactionId}</span><br />Download this file, then import it on the workstation.</div>}
+                  <div className="eyebrow">04 / Paired export</div><h2 className="section-title" style={{ marginTop: 8 }}>Clinical exchange</h2><p className="section-sub">Download a versioned PoC XML file and a human-readable AFMSF review PDF. Both share one transaction ID and examination record; the generated layout is not an exact source-form facsimile.</p>
+                  <div className="record-row"><div><div className="record-label">Exchange format</div><div className="record-value">Dhanwantri PoC XML · v1.0</div></div><FileText size={17} /></div>
+                  <div className="record-row"><div><div className="record-label">Linked form</div><div className="record-value">{state.examination.type === 'PME' ? 'AFMSF 3A · three pages' : 'AFMSF 3B · two pages'}</div></div><span className="tag">XML + PDF</span></div>
+                  <button className="btn btn-primary" style={{ width: '100%', marginTop: 16 }} onClick={exportPublic} disabled={!state.examination.savedAt} data-testid="button-export-public"><ArrowDownToLine size={15} /> Download clinical XML + PDF</button>
+                  {!state.examination.savedAt && <p className="section-sub" style={{ margin: '10px 0 0' }}>Save the PME/AME examination to enable export.</p>}
+                  {state.publicPackage && <div className="muted-note" style={{ marginTop: 16 }}>Latest transaction · <span className="mono">{state.publicPackage.transactionId}</span><br />Import the XML file at the workstation. The public source record remains unchanged.</div>}
                 </section>
                 <section className="surface panel-pad" style={{ marginTop: 16 }}>
                   <div className="eyebrow">Saved record snapshot</div><div className="record-row"><div><div className="record-label">Patient / encounter</div><div className="record-value">{state.patient.name} · {state.encounter.id}</div></div><ClipboardList size={16} /></div>
                   <div className="record-row"><div><div className="record-label">Complaint</div><div className="record-value">{state.encounter.complaint || '—'}</div></div></div>
                   <div className="record-row"><div><div className="record-label">Assessment</div><div className="record-value">{state.encounter.assessment || '—'}</div></div></div>
                 </section>
+                <section className="surface panel-pad" style={{ marginTop: 16 }}>
+                  <div className="eyebrow">05 / Return from military domain</div>
+                  <h2 className="section-title" style={{ marginTop: 8 }}>Receive sanitised clinical copy</h2>
+                  <p className="section-sub">Import the workstation's sanitised XML to complete the return journey. This is stored separately; the original public source record is preserved.</p>
+                  <PackageImporter onFile={importPublicReturn} />
+                  {importError && <div className="muted-note" role="alert" style={{ marginTop: 12 }}>{importError}</div>}
+                  {state.publicReceivedPackage && <div className="muted-note" style={{ marginTop: 14 }} data-testid="status-public-return">
+                    Returned UHID {state.publicReceivedPackage.patient.uhid} · AFMSF {state.publicReceivedPackage.examination?.type === 'PME' ? '3A / PME' : '3B / AME'} · TXN {state.publicReceivedPackage.transactionId}.
+                    <br />Military identifiers were removed; the original public source remains unchanged.
+                  </div>}
+                </section>
               </aside>
             </div>
-            <div className="muted-note" style={{ marginTop: 18 }}>FHIR-inspired only. This demo does not validate against a formal FHIR version or ABDM profile. PDFs and rendered documents are not the interchange master.</div>
+            <div className="muted-note" style={{ marginTop: 18 }}>XML uses the versioned Dhanwantri PoC exchange format; it is not FHIR, CDA or CCD. This local-only demo uses synthetic data and has no production security accreditation.</div>
           </main>
         </Route>
         <Route path="/workstation">
           <PortalHeader active="workstation" />
           <main className="page-wrap">
-            <PageHeading kicker="Transfer control · Operator workspace" title="Package review and transfer configuration" description="Import a public-side package, inspect supported fields, then record an explicit Add or Strip MII/PII operation. These controls demonstrate a workflow; they are not a security boundary." />
+            <PageHeading kicker="Transfer control · Operator workspace" title="Validate, enrich and sanitise exchange packages" description="Import a public clinical XML package, validate its UHID and examination, add military identity only here, or sanitise an ADN package for public release." />
             <div className="grid-two">
               <div>
                 <section className="surface panel-pad">
@@ -749,6 +870,7 @@ function App() {
                   {importError && <div className="muted-note" role="alert" style={{ marginTop: 12, borderColor: '#b75a4f' }}>{importError}</div>}
                   {workstationInput && <div style={{ marginTop: 16 }}>
                     <div className="record-row"><div><div className="record-label">Transaction / received</div><div className="record-value mono">{workstationInput.transactionId} · {new Date(workstationInput.createdAt).toLocaleString()}</div></div><span className="tag">IMPORTED</span></div>
+                    <div className="record-row"><div><div className="record-label">UHID / examination</div><div className="record-value">{workstationInput.patient.uhid || 'UHID missing'} · {workstationInput.examination?.type || 'Examination missing'}</div></div></div>
                     <div className="record-row"><div><div className="record-label">Source → destination</div><div className="record-value">{workstationInput.source} → Secure Data Exchange Workstation</div></div></div>
                     <div className="record-row"><div><div className="record-label">Schema/profile label</div><div className="record-value">{workstationInput.profile}</div></div></div>
                   </div>}
@@ -757,12 +879,12 @@ function App() {
                   <div className="eyebrow">02 / Validation and mapping</div><h2 className="section-title" style={{ marginTop: 8 }}>Supported fields</h2><p className="section-sub">A readable mapping view of package content. Absent source values are reported as blank.</p>
                   {workstationInput ? <>
                     <div className={`validation-panel ${requiredTransferFields.length ? 'has-warnings' : 'is-valid'}`} role="status" data-testid="status-package-validation">
-                      <b>Package structure valid</b>
-                      <span>{requiredTransferFields.length ? `${requiredTransferFields.length} expected demo value${requiredTransferFields.length === 1 ? '' : 's'} missing; nothing will be invented.` : 'All expected demo values are present.'}</span>
+                      <b>{requiredTransferFields.length ? 'Package loaded with validation warnings' : 'Package structure, UHID and examination are present'}</b>
+                      <span>{requiredTransferFields.length ? `${requiredTransferFields.length} required value${requiredTransferFields.length === 1 ? '' : 's'} missing; nothing will be invented.` : 'The saved PME/AME clinical package is ready for field mapping.'}</span>
                       {requiredTransferFields.length > 0 && <small>Missing: {requiredTransferFields.join(', ')}</small>}
                     </div>
                     <MappingTable pkg={workstationInput} />
-                  </> : <EmptyState icon={<FolderOpen size={19} />} title="No package loaded" body="Import a JSON exchange package to review mapping and field availability." />}
+                  </> : <EmptyState icon={<FolderOpen size={19} />} title="No package loaded" body="Import a versioned XML exchange package to review mapping and field availability." />}
                 </section>
                 <section className="surface panel-pad transfer-profile-panel" style={{ marginTop: 16 }}>
                   <div className="eyebrow">03 / Direction-specific configuration</div>
@@ -788,7 +910,9 @@ function App() {
                   <div className="profile-groups">
                     {[...new Set(matchingFields.map(item => item.group))].map((group, index) => {
                       const groupFields = matchingFields.filter(item => item.group === group);
-                      const mutableGroupFields = TRANSFER_FIELDS.filter(item => item.group === group && !item.lockedFor?.includes(profileDirection));
+                       const mutableGroupFields = TRANSFER_FIELDS.filter(item => item.group === group
+                         && !item.lockedFor?.includes(profileDirection)
+                         && !item.requiredFor?.includes(profileDirection));
                       const selectedCount = mutableGroupFields.filter(item => profileSelected.has(item.id)).length;
                       return <details className="profile-group" key={group} open={index === 0}>
                         <summary><b>{group}</b><span>{selectedCount}/{mutableGroupFields.length} selected</span></summary>
@@ -798,10 +922,11 @@ function App() {
                         </div>
                         {groupFields.map(item => {
                           const locked = item.lockedFor?.includes(profileDirection) ?? false;
+                          const required = item.requiredFor?.includes(profileDirection) ?? false;
                           return <label className={`profile-field ${locked ? 'locked' : ''}`} key={item.id}>
-                            <input type="checkbox" checked={profileSelected.has(item.id)} disabled={locked} onChange={event => updateProfileField(item.id, event.target.checked)} data-testid={`checkbox-profile-${item.id.replaceAll('.', '-')}`} />
+                            <input type="checkbox" checked={profileSelected.has(item.id)} disabled={locked || required} onChange={event => updateProfileField(item.id, event.target.checked)} data-testid={`checkbox-profile-${item.id.replaceAll('.', '-')}`} />
                             <span className="profile-field-label"><b>{item.label}</b><code>{item.id}</code></span>
-                            {locked ? <span className="profile-badge locked-badge">Locked out</span> : item.review ? <span className="profile-badge review-badge">Review</span> : null}
+                            {locked ? <span className="profile-badge locked-badge">Locked out</span> : required ? <span className="profile-badge review-badge">Required</span> : item.review ? <span className="profile-badge review-badge">Review</span> : null}
                           </label>;
                         })}
                       </details>;
@@ -827,18 +952,19 @@ function App() {
               <aside>
                 <section className="surface panel-pad">
                   <div className="eyebrow">04 / Explicit operation</div><h2 className="section-title" style={{ marginTop: 8 }}>Choose a transformation</h2>
-                  <div className="muted-note" style={{ margin: '14px 0' }}><b>PoC safeguard.</b> Demonstration rules only, not approved sanitisation guidance. Removing values affects the outgoing copy only; source package is retained.</div>
+                  <div className="muted-note" style={{ margin: '14px 0' }}><b>PoC safeguard.</b> Demo rules only, not approved sanitisation guidance. A required MII and any other military values are added here only. Transformations never modify the imported source.</div>
                   {!state.adnOutboundPackage && <div className="field-grid">
+                    <Field label="Military Identity Identifier (MII)" value={military.mii} onChange={v => setMilitary({ ...military, mii: v })} testId="input-mii" />
                     <Field label="ADN personnel number" value={military.serviceNumber} onChange={v => setMilitary({ ...military, serviceNumber: v })} testId="input-mii-service-number" />
                     <Field label="Rank" value={military.rank} onChange={v => setMilitary({ ...military, rank: v })} testId="input-mii-rank" />
                     <Field label="Unit / ship" value={military.unit} onChange={v => setMilitary({ ...military, unit: v })} testId="input-mii-unit" />
                     <Field label="Service" value={military.service} onChange={v => setMilitary({ ...military, service: v })} testId="input-mii-service" />
                   </div>}
                   <div className="btn-row" style={{ marginTop: 16 }}>
-                    <button className="btn btn-primary" onClick={() => transform('add')} disabled={!state.workstationPublicPackage || state.appliedProfile?.direction !== 'public-to-adn'} data-testid="button-add-mii-pii"><Plus size={14} /> Add MII / PII</button>
-                    <button className="btn btn-danger" onClick={() => transform('strip')} disabled={!state.adnOutboundPackage || state.appliedProfile?.direction !== 'adn-to-public'} data-testid="button-strip-mii-pii"><Trash2 size={14} /> Strip MII / PII</button>
+                    <button className="btn btn-primary" onClick={() => transform('add')} disabled={!state.workstationPublicPackage || state.appliedProfile?.direction !== 'public-to-adn' || requiredTransferFields.length > 0} data-testid="button-add-mii-pii"><Plus size={14} /> Add military fields</button>
+                    <button className="btn btn-danger" onClick={() => transform('strip')} disabled={!state.adnOutboundPackage || state.appliedProfile?.direction !== 'adn-to-public' || requiredTransferFields.length > 0} data-testid="button-strip-mii-pii"><Trash2 size={14} /> Sanitise for public</button>
                   </div>
-                  <p className="section-sub" style={{ margin: '11px 0 0' }}>{state.adnOutboundPackage ? 'ADN → Public is active. Strip removes service and contact identifiers from the outgoing copy; the imported source is retained.' : 'Public → ADN is active. Add uses only operator-supplied values above; import an ADN outbound package to run the separate Strip operation.'}</p>
+                   <p className="section-sub" style={{ margin: '11px 0 0' }}>{state.adnOutboundPackage ? 'ADN → Public is active. Sanitisation removes military identity and administrative fields from the outgoing copy; the imported source remains unchanged.' : 'Public → ADN is active. Add uses only operator-supplied military values; clinical values come from the saved public examination.'}</p>
                 </section>
                 <section className="surface panel-pad" style={{ marginTop: 16 }}>
                   <div className="eyebrow">05 / Transformation report</div><h2 className="section-title" style={{ marginTop: 8 }}>Operator record</h2>
@@ -853,115 +979,62 @@ function App() {
         <Route path="/adn">
           <PortalHeader active="adn" />
           <main className="page-wrap">
-            <PageHeading kicker="ADN-side military medical workflow" title="ADN record and examination forms" description="Import the workstation's ADN package. Supported values remain traceable to their source; form-specific fields not present in the package stay blank until entered here." />
+            <PageHeading kicker="Dhanwantri 3.0 ADN · Military-domain receipt" title="Received military medical record" description="Import the workstation-enriched package and review the completed AFMSF record. Clinical examination remains in the public source record and is not re-entered here." />
             <div className="grid-two">
               <div>
                 <section className="surface panel-pad">
-                  <div className="eyebrow">01 / ADN package import</div><h2 className="section-title" style={{ marginTop: 8 }}>Receiving record</h2><p className="section-sub">Import the exported ADN ingest JSON package. No real cross-domain connection or server storage is used.</p>
+                    <div className="eyebrow">01 / ADN package import</div><h2 className="section-title" style={{ marginTop: 8 }}>Receiving record</h2><p className="section-sub">Import the workstation's versioned XML package. Legacy JSON packages remain accepted for replay compatibility.</p>
                   <PackageImporter onFile={importAdn} />
                   {importError && <div className="muted-note" role="alert" style={{ marginTop: 12 }}>{importError}</div>}
                   <div className="btn-row" style={{ marginTop: 16 }}>
                     <button className={`btn ${adnTab === 'record' ? 'btn-primary' : ''}`} onClick={() => setAdnTab('record')} data-testid="button-adn-record-tab"><UserRound size={14} /> Patient record</button>
-                    <button className={`btn ${adnTab === 'form' ? 'btn-primary' : ''}`} onClick={() => setAdnTab('form')} data-testid="button-adn-form-tab"><FileText size={14} /> AFMSF form</button>
+                    <button className={`btn ${adnTab === 'form' ? 'btn-primary' : ''}`} onClick={() => setAdnTab('form')} data-testid="button-adn-form-tab"><FileText size={14} /> AFMSF review</button>
                   </div>
                   <button className="btn" style={{ marginTop: 12 }} onClick={exportAdnForSanitisation} disabled={!state.adnPackage} data-testid="button-export-adn-outbound"><ArrowDownToLine size={14} /> Export ADN package for sanitisation</button>
-                  <p className="section-sub" style={{ margin: '8px 0 0' }}>Use this separate outbound package to demonstrate ADN → Public sanitisation at the workstation.</p>
+                    <p className="section-sub" style={{ margin: '8px 0 0' }}>Download the military record's XML and matching AFMSF PDF, then import the XML at the workstation for outbound sanitisation.</p>
                 </section>
                 {adnTab === 'record' ? <section className="surface panel-pad" style={{ marginTop: 16 }}>
                   <div className="eyebrow">02 / Military patient record</div><h2 className="section-title" style={{ marginTop: 8 }}>{patient.name || 'No patient package imported'}</h2>
-                  <p className="section-sub">{patientPackage ? `Patient reference ${patient.id} · Imported through workstation` : 'Import a package to populate supported demographic and encounter fields.'}</p>
+                    <p className="section-sub">{patientPackage ? `UHID ${patient.uhid || '—'} · imported through workstation` : 'Import a package to populate the patient and clinical record.'}</p>
                   {patientPackage ? <>
+                    <div className="record-row"><div><div className="record-label">UHID · Unique Health Identifier</div><div className="record-value">{patient.uhid || '—'}</div></div><ProvenanceMark item={provenanceFor('patient.uhid')} /></div>
                     <div className="record-row"><div><div className="record-label">Date of birth</div><div className="record-value">{patient.dob || '—'}</div></div><ProvenanceMark item={provenanceFor('patient.dob')} /></div>
                     <div className="record-row"><div><div className="record-label">Sex</div><div className="record-value">{patient.sex || '—'}</div></div><ProvenanceMark item={provenanceFor('patient.sex')} /></div>
+                    <div className="record-row"><div><div className="record-label">Military Identity Identifier (MII)</div><div className="record-value">{patient.mii || '—'}</div></div><ProvenanceMark item={provenanceFor('patient.mii')} /></div>
                     <div className="record-row"><div><div className="record-label">ADN personnel number</div><div className="record-value">{patient.serviceNumber || '—'}</div></div><ProvenanceMark item={provenanceFor('patient.serviceNumber')} /></div>
                     <div className="record-row"><div><div className="record-label">Rank · Unit · Service</div><div className="record-value">{[patient.rank, patient.unit, patient.service].filter(Boolean).join(' · ') || '—'}</div></div><span className="prov prov-enriched">WORKSTATION / BLANK IF ABSENT</span></div>
                     <div className="record-row"><div><div className="record-label">Presenting complaint</div><div className="record-value">{encounter.complaint || '—'}</div></div><ProvenanceMark item={provenanceFor('encounter.complaint')} /></div>
                     <div className="record-row"><div><div className="record-label">History</div><div className="record-value">{encounter.history || '—'}</div></div><ProvenanceMark item={provenanceFor('encounter.history')} /></div>
                     <div className="record-row"><div><div className="record-label">Findings · assessment · plan</div><div className="record-value">{[encounter.findings, encounter.assessment, encounter.plan].filter(Boolean).join(' / ') || '—'}</div></div><span className="prov prov-imported">IMPORTED · i-DHANWANTRI</span></div>
                     <p className="signature">TXN {patientPackage.transactionId} · {patientPackage.profile}</p>
-                  </> : <EmptyState icon={<Upload size={18} />} title="Awaiting ingest package" body="Import the JSON file produced by the workstation. This is a manual demonstration handoff." />}
-                </section> : <section className="surface panel-pad" style={{ marginTop: 16 }}>
-                  <div className="eyebrow">03 / AFMSF structured examination</div><h2 className="section-title" style={{ marginTop: 8 }}>{state.examination.type === 'PME' ? 'PME · AFMSF 3A' : 'AME · AFMSF 3B'}</h2>
-                  <p className="section-sub">Demo form references only. Fields absent from the inbound package or not entered by the officer remain blank.</p>
-                  <div className="btn-row" style={{ marginBottom: 16 }}>
-                    <button className={`btn ${state.examination.type === 'PME' ? 'btn-primary' : ''}`} onClick={selectPme} data-testid="button-select-pme">PME · 3A</button>
-                    <button className={`btn ${state.examination.type === 'AME' ? 'btn-primary' : ''}`} onClick={createAmE} disabled={state.examination.type !== 'PME'} data-testid="button-project-ame">Project AME · 3B</button>
-                  </div>
-                  <div className="form-page-nav" role="tablist" aria-label="AFMSF form pages">
-                    {activeFormPages.map(page => <button
-                      key={page.number}
-                      type="button"
-                      role="tab"
-                      aria-selected={formPage === page.number}
-                      className={formPage === page.number ? 'active' : ''}
-                      onClick={() => setFormPage(page.number)}
-                      data-testid={`tab-form-page-${page.number}`}
-                    >Page {page.number} of {page.total}</button>)}
-                  </div>
-                  <div className="form-page-title"><span>{activeFormPage.continuation ? 'CONTINUATION' : 'EXAMINATION FORM'}</span><b>{activeFormPage.title}</b></div>
-                  <div className="exam-sections">
-                    {activeFormPage.sections.map(group => <section className="exam-section" key={group.title}>
-                      <h3>{group.title}</h3>
-                      <div className="field-grid">
-                        {group.fields.map(item => item.key === 'dental.tooth_chart'
-                          ? <div className="field full" key={item.key}>
-                            <label>{item.label}</label>
-                            <DentalChart
-                              value={state.examination.values[item.key] ?? ''}
-                              onChange={value => updateExam(item.key, value)}
-                              testId="dental-chart-editor"
-                            />
-                            <small className="field-provenance">{state.examination.provenance[item.key] || 'Blank · no markings entered'}</small>
-                          </div>
-                          : <Field
-                            key={item.key}
-                            label={item.label}
-                            type={item.type === 'textarea' ? 'text' : item.type}
-                            options={item.options}
-                            value={state.examination.values[item.key] ?? ''}
-                            provenance={state.examination.provenance[item.key]}
-                            onChange={value => updateExam(item.key, value)}
-                            testId={`input-form-${item.key.replaceAll('.', '-')}`}
-                            full={item.type === 'textarea'}
-                            multiline={item.type === 'textarea'}
-                          />)}
-                      </div>
-                    </section>)}
-                  </div>
-                  <div className="btn-row" style={{ marginTop: 18 }}>
-                    <button className="btn btn-primary" onClick={saveExamination} data-testid="button-save-examination"><BadgeCheck size={15} /> Save structured examination</button>
-                    {state.examination.savedAt && <span className="tag" data-testid="status-examination-saved">SAVED · {new Date(state.examination.savedAt).toLocaleString()}</span>}
-                  </div>
-                  <div className="muted-note" style={{ marginTop: 16 }}>
-                    {state.examination.type === 'AME'
-                      ? `Only documented PME-to-AME mappings are projected. ${blankFormFieldCount} fields remain blank; AME-only values such as immunisation require separate entry.`
-                      : `${blankFormFieldCount} fields remain blank. Unknown findings and unavailable source values are not filled in.`}
-                  </div>
-                  <div className="source-reference-warning" role="note">Page structure is based on the supplied AFMSF 3A / 3B examples. Official marks are intentionally omitted; this demo uses synthetic data and is not an official medical record.</div>
-                </section>}
+                  </> : <EmptyState icon={<Upload size={18} />} title="Awaiting ingest package" body="Import the XML file produced by the workstation. Legacy JSON packages are accepted for replay." />}
+                </section> : patientPackage
+                  ? <ExaminationReview examination={state.examination} patient={patient} />
+                  : <section className="surface panel-pad" style={{ marginTop: 16 }}>
+                    <EmptyState icon={<FileText size={18} />} title="No examination to review" body="Import the workstation-enriched XML package to see the completed AFMSF 3A or 3B record." />
+                  </section>}
               </div>
               <aside>
                 <section className="surface panel-pad">
                   <div className="eyebrow">Field-level provenance</div><h2 className="section-title" style={{ marginTop: 8 }}>Where values came from</h2>
                   <div className="record-row"><span className="prov prov-imported">IMPORTED</span><div className="record-value">From i-Dhanwantri package</div></div>
                   <div className="record-row"><span className="prov prov-enriched">ENRICHED</span><div className="record-value">Entered by workstation operator</div></div>
-                  <div className="record-row"><span className="prov prov-entered">ADN-ENTERED</span><div className="record-value">Entered or amended in this form</div></div>
+                  <div className="record-row"><span className="prov prov-entered">REVIEWED IN ADN</span><div className="record-value">Read-only receipt; no clinical re-entry</div></div>
                   {patientPackage?.provenance?.length ? <p className="signature">{patientPackage.provenance.length} source field references in package</p> : <p className="section-sub" style={{ margin: '14px 0 0' }}>Import a package to show field-specific origins.</p>}
                 </section>
                 <section className="surface panel-pad" style={{ marginTop: 16 }}>
-                  <div className="eyebrow">Document output</div><h2 className="section-title" style={{ marginTop: 8 }}>Printable examination</h2>
-                  <p className="section-sub">Generate a local print-to-PDF document from the structured form values.</p>
+                  <div className="eyebrow">Exchange output</div><h2 className="section-title" style={{ marginTop: 8 }}>Paired record files</h2>
+                  <p className="section-sub">The workstation produces an XML exchange file and a direct-download PDF from the same transformed record. Use the outbound action below for the return journey.</p>
                   <div className="record-row"><div><div className="record-label">Record reference</div><div className="record-value mono">{state.examination.examinationRef}</div></div></div>
                   <div className="record-row"><div><div className="record-label">Template reference</div><div className="record-value">{state.examination.templateRef}</div></div></div>
                   <div className="record-row"><div><div className="record-label">Source record</div><div className="record-value mono">{state.examination.sourceExaminationRef || 'Current examination record'}</div></div></div>
-                  <button className="btn btn-primary" style={{ width: '100%', marginTop: 14 }} onClick={printExamination} disabled={!state.examination.savedAt} data-testid="button-print-examination"><Printer size={15} /> Print / Save as PDF</button>
-                  {!state.examination.savedAt && <p className="section-sub" style={{ margin: '10px 0 0' }}>Save the structured examination before printing.</p>}
+                  <div className="record-row"><div><div className="record-label">Patient identifier</div><div className="record-value">{patient.uhid || 'UHID unavailable'}</div></div></div>
                   {state.examination.documentRef && <p className="signature" data-testid="text-document-reference">{state.examination.documentRef} · {state.examination.documentCreatedAt}</p>}
                 </section>
               </aside>
             </div>
-            <div id="print-document" className="print-document">
-              <div className="print-preview-warning no-print">Print preview based on the supplied AFMSF examples · official marks omitted · synthetic demo data.</div>
+            {adnTab === 'form' && patientPackage && <div id="print-document" className="print-document">
+              <div className="print-preview-warning no-print">Browser review layout only; it follows section order but is not a faithful source-form facsimile. Official marks and uploaded patient values are omitted.</div>
               {activeFormPages.map(page => <section className={`afmsf-print-page ${state.examination.type === 'AME' ? 'afmsf-print-page--ame' : ''} ${page.number === 2 ? 'afmsf-print-page--2' : ''}`} key={`${state.examination.type}-${page.number}`} data-testid={`print-page-${page.number}`}>
                 <header className="afmsf-print-header">
                   <b className="confidential-mark">CONFIDENTIAL</b>
@@ -969,9 +1042,9 @@ function App() {
                   <h2>{state.examination.type === 'PME' ? 'PERIODIC / SPECIAL MEDICAL EXAMINATION' : 'ANNUAL MEDICAL EXAMINATION'}</h2>
                   <b className="afmsf-form-code">{state.examination.type === 'PME' ? 'A.F.M.S.F. 3A (Ver-2002)' : 'A.F.M.S.F. 3B (Ver 2002)'}</b>
                 </header>
-                {page.continuationIdentity && <ContinuationIdentityStrip values={state.examination.values} />}
+                {page.continuationIdentity && <ContinuationIdentityStrip values={state.examination.values} uhid={patient.uhid || ''} />}
                 {page.sections.map(group => group.title === 'Personal Data'
-                  ? <PrintPersonalData key={group.title} type={state.examination.type} values={state.examination.values} />
+                  ? <PrintPersonalData key={group.title} type={state.examination.type} values={state.examination.values} patient={patient} />
                   : group.title === 'Continuation identity strip'
                     ? null
                     : <section className={`print-section layout-${printLayoutFor(group.title)}`} key={`print-${group.title}`}>
@@ -985,7 +1058,7 @@ function App() {
                 {page.number === 1 && <div className="afmsf-form-note">Note: Delete what is not applicable. If any abnormality is detected, delete “NAD” and enter the findings. No findings are prefilled in this demo.</div>}
                 {state.examination.type === 'AME' && page.number === 1 && <div className="afmsf-pto">(PTO)</div>}
               </section>)}
-            </div>
+            </div>}
           </main>
         </Route>
         <Route component={NotFound} />
@@ -1012,6 +1085,108 @@ function PortalHeader({ active }: { active: 'idh' | 'workstation' | 'adn' }) {
     <span className="demo-chip">DEMO / SYNTHETIC DATA</span>
   </header>;
 }
+function ClinicalCapture({
+  examination, patient, formPage, setFormPage, onUpdate, onUhidChange,
+  onSelectPme, onCreateAme, onSave,
+}: {
+  examination: Examination;
+  patient: Patient;
+  formPage: number;
+  setFormPage: (page: number) => void;
+  onUpdate: (field: string, value: string) => void;
+  onUhidChange: (value: string) => void;
+  onSelectPme: () => void;
+  onCreateAme: () => void;
+  onSave: () => void;
+}) {
+  const pages = FORM_PAGES[examination.type];
+  const page = pages.find(item => item.number === formPage) ?? pages[0];
+  const fields = [...new Map(pages.flatMap(item => item.sections.flatMap(group => group.fields))
+    .filter(item => !MILITARY_ONLY_EXAM_FIELDS.includes(item.key as typeof MILITARY_ONLY_EXAM_FIELDS[number]))
+    .map(item => [item.key, item])).values()];
+  const blankCount = fields.filter(item => !examination.values[item.key]?.trim()).length;
+  return <section className="surface panel-pad" style={{ marginTop: 16 }}>
+    <div className="eyebrow">03 / Public-domain clinical examination</div>
+    <h2 className="section-title" style={{ marginTop: 8 }}>
+      {examination.type === 'PME' ? 'PME · AFMSF 3A' : 'AME · AFMSF 3B'}
+    </h2>
+    <p className="section-sub">Clinical capture takes place in i-Dhanwantri. Military identifiers are not requested or included here. The examination is saved against this patient UHID.</p>
+    <div className="identity-banner">
+      <Field label="1. UHID · Unique Health Identifier" value={patient.uhid} onChange={onUhidChange} testId="input-clinical-uhid" />
+      <div><b>Patient</b><span>{patient.name || 'Not recorded'} · {patient.dob || 'Date of birth blank'}</span></div>
+    </div>
+    <div className="btn-row" style={{ margin: '14px 0 10px' }}>
+      <button type="button" className={`btn ${examination.type === 'PME' ? 'btn-primary' : ''}`} onClick={onSelectPme} data-testid="button-select-pme">PME · AFMSF 3A</button>
+      <button type="button" className={`btn ${examination.type === 'AME' ? 'btn-primary' : ''}`} onClick={onCreateAme} data-testid="button-select-ame">AME · AFMSF 3B</button>
+    </div>
+    <div className="form-page-nav" role="tablist" aria-label="Clinical AFMSF pages">
+      {pages.map(item => <button key={item.number} type="button" role="tab" aria-selected={formPage === item.number}
+        className={formPage === item.number ? 'active' : ''} onClick={() => setFormPage(item.number)}>
+        Page {item.number} of {item.total}
+      </button>)}
+    </div>
+    <div className="form-page-title"><span>{page.continuation ? 'CONTINUATION' : 'EXAMINATION FORM'}</span><b>{page.title}</b></div>
+    <div className="exam-sections">
+      {page.sections.map(group => <section className="exam-section" key={group.title}>
+        <h3>{group.title}</h3>
+        <div className="field-grid">
+          {group.fields.filter(item => !MILITARY_ONLY_EXAM_FIELDS.includes(item.key as typeof MILITARY_ONLY_EXAM_FIELDS[number]))
+            .map(item => item.key === 'dental.tooth_chart'
+              ? <div className="field full" key={item.key}>
+                <label>{item.label}</label>
+                <DentalChart value={examination.values[item.key] ?? ''} onChange={value => onUpdate(item.key, value)} testId="public-dental-chart" />
+                <small className="field-provenance">{examination.provenance[item.key] || 'Blank · no markings entered'}</small>
+              </div>
+              : <Field key={item.key}
+                label={item.label}
+                type={item.type === 'textarea' ? 'text' : item.type}
+                options={item.options}
+                value={examination.values[item.key]
+                  || (item.key === 'person.name' ? patient.name : item.key === 'person.date_of_birth' ? patient.dob : item.key === 'person.sex' ? patient.sex : '')}
+                provenance={examination.provenance[item.key]}
+                onChange={value => onUpdate(item.key, value)}
+                testId={`input-public-exam-${item.key.replaceAll('.', '-')}`}
+                full={item.type === 'textarea'}
+                multiline={item.type === 'textarea'}
+              />)}
+        </div>
+      </section>)}
+    </div>
+    <div className="btn-row" style={{ marginTop: 18 }}>
+      <button type="button" className="btn btn-primary" onClick={onSave} data-testid="button-save-examination">
+        <BadgeCheck size={15} /> Save clinical examination
+      </button>
+      {examination.savedAt && <span className="tag" data-testid="status-examination-saved">SAVED · {new Date(examination.savedAt).toLocaleString()}</span>}
+    </div>
+    <div className="muted-note" style={{ marginTop: 14 }}>{blankCount} clinical fields remain blank. No findings are assumed or populated automatically.</div>
+    <div className="source-reference-warning">This review layout follows the source forms' section structure but is not a faithful facsimile. Official marks and values from the uploaded patient examples are omitted.</div>
+  </section>;
+}
+
+function ExaminationReview({ examination, patient }: { examination: Examination; patient: Partial<Patient> }) {
+  const pages = FORM_PAGES[examination.type];
+  return <section className="surface panel-pad" style={{ marginTop: 16 }}>
+    <div className="eyebrow">03 / Received military medical record</div>
+    <h2 className="section-title" style={{ marginTop: 8 }}>
+      {examination.type === 'PME' ? 'Completed PME · AFMSF 3A' : 'Completed AME · AFMSF 3B'}
+    </h2>
+    <p className="section-sub">Read-only review of the clinical examination captured in i-Dhanwantri and the workstation-enriched military fields. No clinical re-entry is required in ADN.</p>
+    <div className="record-row"><div><div className="record-label">UHID · Unique Health Identifier</div><div className="record-value">{patient.uhid || '—'}</div></div><span className="prov prov-imported">COMMON PATIENT ID</span></div>
+    <div className="record-row"><div><div className="record-label">Military Identity Identifier (MII)</div><div className="record-value">{patient.mii || 'Blank · not supplied'}</div></div><span className="prov prov-enriched">WORKSTATION ENRICHMENT</span></div>
+    <div className="record-row"><div><div className="record-label">Military number · rank · unit · service</div><div className="record-value">{[patient.serviceNumber, patient.rank, patient.unit, patient.service].filter(Boolean).join(' · ') || 'Blank · no enrichment values supplied'}</div></div><span className="prov prov-enriched">WORKSTATION ENRICHMENT</span></div>
+    {pages.map(page => <details className="review-page" key={page.number} open={page.number === 1}>
+      <summary>{page.title}</summary>
+      {page.sections.filter(section => section.title !== 'Continuation identity strip').map(section => <div className="review-section" key={`${page.number}-${section.title}`}>
+        <h3>{section.title}</h3>
+        <dl>{section.fields.map(field => {
+          const value = examination.values[field.key] ?? '';
+          return <div key={field.key}><dt>{field.key === 'person.adn_personnel_number' ? 'Military number' : field.label}</dt><dd>{value || '—'}</dd></div>;
+        })}</dl>
+      </div>)}
+    </details>)}
+    <div className="muted-note" style={{ marginTop: 14 }}>UHID is shared across domains. Military-only identifiers were added at the workstation. This local synthetic demo is not connected to a secure military network.</div>
+  </section>;
+}
 function PageHeading({ kicker, title, description }: { kicker: string; title: string; description: string }) {
   return <div className="page-heading"><div><div className="eyebrow">{kicker}</div><h1>{title}</h1><p>{description}</p></div><Link href="/" className="btn" data-testid="link-back-journey"><RotateCcw size={14} /> Journey / reset</Link></div>;
 }
@@ -1026,7 +1201,7 @@ function Field({ label, value, onChange, testId, type = 'text', options, full = 
         {options.map(option => <option value={option} key={option}>{option}</option>)}
       </select>
       : <input id={testId} data-testid={testId} type={type === 'select' ? 'text' : type} value={value} onChange={event => onChange(event.target.value)} />}
-    <small className="field-provenance" data-testid={`provenance-${testId.slice('input-form-'.length)}`}>{provenance || (value ? 'ADN-entered / amended' : 'Blank · no value available')}</small>
+    <small className="field-provenance" data-testid={`provenance-${testId.slice('input-form-'.length)}`}>{provenance || (value ? 'Entered in this portal' : 'Blank · no value available')}</small>
   </div>;
 }
 const UPPER_RIGHT_TEETH = [18, 17, 16, 15, 14, 13, 12, 11];
@@ -1081,8 +1256,9 @@ function PrintDentalChart({ value }: { value: string }) {
     <small>− Missing · x Unsaveable</small>
   </div>;
 }
-function ContinuationIdentityStrip({ values }: { values: Record<string, string> }) {
+function ContinuationIdentityStrip({ values, uhid }: { values: Record<string, string>; uhid: string }) {
   return <div className="continuation-identity">
+    <span><b>UHID</b>{uhid || '\u00a0'}</span>
     <span><b>NO</b>{values['person.adn_personnel_number'] || '\u00a0'}</span>
     <span><b>RANK</b>{values['person.rank'] || '\u00a0'}</span>
     <span><b>NAME</b>{values['person.name'] || '\u00a0'}</span>
@@ -1095,11 +1271,12 @@ function PackageImporter({ onFile }: { onFile: (file: File) => void }) {
     if (file) onFile(file);
     event.target.value = '';
   };
-  return <div className="dropzone"><div style={{ display: 'flex', justifyContent: 'center', marginBottom: 8 }}><Upload size={21} /></div><div style={{ fontWeight: 700, fontSize: 12 }}>Choose a Dhanwantri exchange JSON file</div><div className="section-sub" style={{ margin: '5px 0 0' }}>Manual export / import handoff · no network transfer</div><input type="file" accept=".json,application/json" onChange={handle} data-testid="input-package-import" /></div>;
+  return <div className="dropzone"><div style={{ display: 'flex', justifyContent: 'center', marginBottom: 8 }}><Upload size={21} /></div><div style={{ fontWeight: 700, fontSize: 12 }}>Choose a Dhanwantri XML exchange file</div><div className="section-sub" style={{ margin: '5px 0 0' }}>Versioned PoC XML · legacy JSON files remain accepted · manual local handoff</div><input type="file" accept=".xml,application/xml,text/xml,.json,application/json" onChange={handle} data-testid="input-package-import" /></div>;
 }
 function MappingTable({ pkg }: { pkg: ExchangePackage }) {
   const rows = [
-    ['Patient reference', pkg.patient.id, 'person.source_patient_id'],
+    ['Synthetic reference', pkg.patient.id, 'person.source_patient_id'],
+    ['UHID', pkg.patient.uhid, 'person.uhid'],
     ['Name', pkg.patient.name, 'person.name'],
     ['Date of birth', pkg.patient.dob, 'person.date_of_birth'],
     ['Sex', pkg.patient.sex, 'person.sex'],
@@ -1109,6 +1286,10 @@ function MappingTable({ pkg }: { pkg: ExchangePackage }) {
     ['Assessment', pkg.encounter.assessment, 'clinical.assessment'],
     ['Plan', pkg.encounter.plan, 'clinical.plan'],
     ['Clinician', pkg.encounter.clinician, 'actor.clinician'],
+    ['Examination type', pkg.examination?.type, 'examination.type'],
+    ['Clinical examination date', pkg.examination?.values?.['exam.date'], 'examination.values[exam.date]'],
+    ['Clinical history', pkg.examination?.values?.['clinical.past_medical_history'], 'examination.values[clinical.past_medical_history]'],
+    ['Clinical findings', pkg.examination?.values?.['clinical.general_observations'], 'examination.values[clinical.general_observations]'],
   ];
   return <div className="table-scroll"><table className="field-table"><thead><tr><th>Source field</th><th>Mapped ADN field</th><th>Source value</th><th>Outcome</th></tr></thead><tbody>{rows.map(([label, value, target]) => <tr key={label}><td>{label}</td><td><code>{target}</code></td><td>{value || <span className="mono">blank</span>}</td><td><span className="tag">{value ? 'MAP' : 'BLANK'}</span></td></tr>)}</tbody></table></div>;
 }
@@ -1155,8 +1336,9 @@ function printLayoutFor(title: string): string {
   if (value.includes('final observations')) return 'final';
   return 'standard';
 }
-function PrintPersonalData({ type, values }: { type: 'PME' | 'AME'; values: Record<string, string> }) {
+function PrintPersonalData({ type, values, patient }: { type: 'PME' | 'AME'; values: Record<string, string>; patient: Partial<Patient> }) {
   const value = (key: string) => values[key]?.trim() ?? '';
+  const militaryNumber = patient.serviceNumber || value('person.adn_personnel_number');
   const age = [
     value('person.age_years') && `${value('person.age_years')} years`,
     type === 'PME' && value('person.age_months') && `${value('person.age_months')} months`,
@@ -1171,7 +1353,8 @@ function PrintPersonalData({ type, values }: { type: 'PME' | 'AME'; values: Reco
   return <section className="print-section layout-personal">
     <h3>PERSONAL DATA</h3>
     <div className="print-grid">
-      <PrintCell label="1. Number" value={value('person.adn_personnel_number')} />
+      <PrintCell label={militaryNumber ? '1. Military number / UHID' : '1. UHID'} value={militaryNumber ? `${militaryNumber} · UHID ${patient.uhid || '—'}` : patient.uhid || '—'} />
+      {patient.mii && <PrintCell label="Military Identity Identifier (MII)" value={patient.mii} />}
       <PrintCell label="2. Rank" value={value('person.rank')} />
       <PrintCell label="3. Name" value={value('person.name')} />
       <PrintCell label="4. Unit / Ship" value={value('person.unit_ship')} />
