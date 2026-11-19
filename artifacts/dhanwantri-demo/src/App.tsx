@@ -31,6 +31,7 @@ type Examination = {
 };
 type DemoState = {
   patient: Patient; encounter: Encounter; recordSaved: boolean; publicPackage: ExchangePackage | null;
+  workstationPublicPackage: ExchangePackage | null;
   workstationPackage: ExchangePackage | null; adnPackage: ExchangePackage | null;
   adnOutboundPackage: ExchangePackage | null; publicReleasePackage: ExchangePackage | null;
   report: TransformationReport | null; examination: Examination; startedAt: string;
@@ -47,7 +48,8 @@ const blankExam = (): Examination => ({
 const initialState = (): DemoState => ({
   patient: { id: 'IDH-SYN-2048', name: 'Aarav Sen', dob: '1992-08-14', sex: 'Male', phone: '', email: '', address: '', serviceNumber: '', rank: '', unit: '', service: '' },
   encounter: { id: makeId('ENC'), date: '', complaint: '', history: '', findings: '', assessment: '', plan: '', clinician: '' },
-  recordSaved: false, publicPackage: null, workstationPackage: null, adnPackage: null,
+  recordSaved: false, publicPackage: null, workstationPublicPackage: null,
+  workstationPackage: null, adnPackage: null,
   adnOutboundPackage: null, publicReleasePackage: null, report: null,
   examination: blankExam(), startedAt: now(),
 });
@@ -129,15 +131,15 @@ function App() {
     }
     if (fromAdn) {
       update('adnOutboundPackage', pkg);
-      update('publicPackage', null);
+      update('workstationPublicPackage', null);
       update('publicReleasePackage', null);
     } else {
-      update('publicPackage', pkg);
+      update('workstationPublicPackage', pkg);
       update('adnOutboundPackage', null);
-      update('workstationPackage', null);
       update('publicReleasePackage', null);
       update('adnPackage', null);
     }
+    update('workstationPackage', null);
     update('report', null);
     setImportError('');
     setNotice(fromAdn
@@ -145,14 +147,14 @@ function App() {
       : 'Public-side package imported for ADN mapping.');
   }, setImportError);
   const transform = (operation: 'add' | 'strip') => {
-    const source = operation === 'add' ? state.publicPackage : state.adnOutboundPackage;
+    const source = operation === 'add' ? state.workstationPublicPackage : state.adnOutboundPackage;
     if (!source) {
       setNotice(operation === 'add'
         ? 'Import a public-side package before adding ADN fields.'
         : 'Import an ADN-origin package before stripping fields.');
       return;
     }
-    const actions: string[] = ['Mapped supported patient demographics and encounter fields without changing source values.'];
+    const actions: string[] = ['Mapped supported patient demographics and encounter fields; the imported source package remains unchanged.'];
     let militaryFields: Record<string, string> = {};
     let patient = { ...source.patient };
     let provenance = [...(source.provenance ?? [])];
@@ -187,7 +189,7 @@ function App() {
         'FHIR-inspired label is representational and does not claim FHIR or ABDM conformance.',
         'Missing clinical values were left blank. Review free text for identifiers before any real release.',
       ],
-      result: 'Validated for demo mapping',
+      result: 'Demo mapping recorded · not standards-validated',
     };
     const out: ExchangePackage = {
       ...source,
@@ -213,6 +215,8 @@ function App() {
       return;
     }
     update('adnPackage', pkg);
+    update('adnOutboundPackage', null);
+    update('publicReleasePackage', null);
     setImportError('');
     setNotice('ADN ingest package imported. Field provenance is available below.');
     setAdnTab('record');
@@ -233,7 +237,6 @@ function App() {
       profile: 'ADN outbound package · awaiting workstation sanitisation',
       examination: { ...state.examination },
     };
-    update('adnOutboundPackage', pkg);
     downloadJson(`${pkg.transactionId}-adn-outbound.json`, pkg);
     setNotice('ADN outbound package exported. Import it at the workstation for sanitisation.');
   };
@@ -265,7 +268,7 @@ function App() {
   };
   const currentPortal = path.startsWith('/workstation') ? 'workstation' : path.startsWith('/adn') ? 'adn' : 'public';
   const patientPackage = state.adnPackage;
-  const workstationInput = state.adnOutboundPackage ?? state.publicPackage;
+  const workstationInput = state.adnOutboundPackage ?? state.workstationPublicPackage;
   const patient = patientPackage?.patient ?? state.patient;
   const encounter = patientPackage?.encounter ?? state.encounter;
   const provenanceFor = (field: string) => patientPackage?.provenance?.find(item => item.field === field);
@@ -291,7 +294,7 @@ function App() {
             </section>
             <div className="flowline" aria-label="Journey status">
               <div className={`flowstep ${state.recordSaved ? 'done' : 'current'}`}><span className="step-no">01 — CAPTURE</span><b>i-Dhanwantri</b><span>{state.recordSaved ? 'Structured record saved' : 'Registration and encounter'}</span></div>
-              <div className={`flowstep ${state.workstationPackage ? 'done' : state.publicPackage ? 'current' : ''}`}><span className="step-no">02 — TRANSFORM</span><b>Exchange Workstation</b><span>{state.publicReleasePackage ? 'Sanitised public package ready' : state.workstationPackage ? 'Report recorded · package ready' : state.publicPackage ? 'Public package imported' : 'Import, validate, map'}</span></div>
+              <div className={`flowstep ${state.workstationPackage ? 'done' : state.workstationPublicPackage || state.adnOutboundPackage ? 'current' : ''}`}><span className="step-no">02 — TRANSFORM</span><b>Exchange Workstation</b><span>{state.publicReleasePackage ? 'Sanitised public package ready' : state.workstationPackage ? 'Report recorded · package ready' : state.workstationPublicPackage ? 'Public package imported' : state.adnOutboundPackage ? 'ADN package imported' : state.publicPackage ? 'Public package exported · import next' : 'Import, validate, map'}</span></div>
               <div className={`flowstep ${state.adnPackage ? 'done' : ''}`}><span className="step-no">03 — REUSE</span><b>Dhanwantri 3.0 ADN</b><span>{state.adnPackage ? 'Package available for examination' : 'Import and complete AFMSF form'}</span></div>
             </div>
             <div className="journey-layout">
@@ -304,7 +307,7 @@ function App() {
                 <div className="eyebrow">Journey checkpoint</div><h2 className="section-title" style={{ marginTop: 8 }}>Current demo state</h2>
                 <div className="record-row"><div><div className="record-label">Synthetic patient</div><div className="record-value">{state.patient.name}</div></div><span className="tag">REGISTERED</span></div>
                 <div className="record-row"><div><div className="record-label">Clinical record</div><div className="record-value">{state.recordSaved ? 'Saved' : 'Not yet saved'}</div></div><Activity size={16} /></div>
-                <div className="record-row"><div><div className="record-label">Exchange transaction</div><div className="record-value mono">{state.workstationPackage?.transactionId ?? state.publicPackage?.transactionId ?? '—'}</div></div><ArrowLeftRight size={16} /></div>
+                <div className="record-row"><div><div className="record-label">Exchange transaction</div><div className="record-value mono">{state.publicReleasePackage?.transactionId ?? state.workstationPackage?.transactionId ?? workstationInput?.transactionId ?? state.publicPackage?.transactionId ?? '—'}</div></div><ArrowLeftRight size={16} /></div>
                 <div className="muted-note" style={{ marginTop: 16 }}>Local browser demo only. Package movement is an explicit JSON download and import, not a real network connection.</div>
               </aside>
             </div>
@@ -397,7 +400,7 @@ function App() {
                     <Field label="Service" value={military.service} onChange={v => setMilitary({ ...military, service: v })} testId="input-mii-service" />
                   </div>}
                   <div className="btn-row" style={{ marginTop: 16 }}>
-                    <button className="btn btn-primary" onClick={() => transform('add')} disabled={!state.publicPackage} data-testid="button-add-mii-pii"><Plus size={14} /> Add MII / PII</button>
+                    <button className="btn btn-primary" onClick={() => transform('add')} disabled={!state.workstationPublicPackage} data-testid="button-add-mii-pii"><Plus size={14} /> Add MII / PII</button>
                     <button className="btn btn-danger" onClick={() => transform('strip')} disabled={!state.adnOutboundPackage} data-testid="button-strip-mii-pii"><Trash2 size={14} /> Strip MII / PII</button>
                   </div>
                   <p className="section-sub" style={{ margin: '11px 0 0' }}>{state.adnOutboundPackage ? 'ADN → Public is active. Strip removes service and contact identifiers from the outgoing copy; the imported source is retained.' : 'Public → ADN is active. Add uses only operator-supplied values above; import an ADN outbound package to run the separate Strip operation.'}</p>

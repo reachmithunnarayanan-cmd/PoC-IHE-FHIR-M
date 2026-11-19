@@ -1,0 +1,1 @@
+- [Repository handoffs](repository-handoffs.md) — After a project transition, confirm the source checkout and history are in the active project root before building.
