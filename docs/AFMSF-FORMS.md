@@ -9,6 +9,8 @@ The ADN interface demonstrates two form-led examination workflows:
 
 The uploaded source forms are the authority for exact labels, order, grouping, and layout. Preserve their terminology when implementing the form screens and generated PDFs. Do not infer fields that are not present in the source form.
 
+The source PDFs referenced below are not included in this checkout. Until they are supplied, use `docs/CANONICAL-FIELD-DICTIONARY.md` for the available structured field vocabulary and PME-to-AME projection rules. The current print view is a data-driven record layout, not a verified facsimile of either source form.
+
 ## AME — AFMSF 3B
 
 The source form includes:
@@ -31,10 +33,13 @@ Use the uploaded AFMSF 3A source PDF as the field-level authority. Its scan/text
 ## Data reuse
 
 - Prefill only fields supported by the incoming ADN-ingest package and the documented mapping.
+- For PME-to-AME projection, follow the field-group mapping matrix in `docs/CANONICAL-FIELD-DICTIONARY.md`; preserve distinct test records and decision context.
+- Leave AME-only immunisation blank unless it has its own source value.
 - Show whether a value was imported, workstation-enriched, or entered/amended in ADN.
 - Keep unsupported or absent fields blank.
 - The medical officer enters examination-specific findings and any other missing data required by the form.
 - Saving the structured examination record is the authoritative action; generate the PDF from that record.
+- Preserve a provenance label for every populated projected or edited form value; show blank source status for unavailable values.
 
 ## PDF generation
 

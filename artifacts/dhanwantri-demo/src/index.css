@@ -325,6 +325,10 @@ button { cursor: pointer; }
 .portal-adn .field input,.portal-adn .field select,.portal-adn .field textarea { --field-bg:#fbf9f1; }
 .field textarea { resize:vertical; min-height:84px; }
 .field input:focus,.field textarea:focus,.field select:focus { border-color:var(--portal); box-shadow:0 0 0 2px color-mix(in srgb,var(--portal) 15%,transparent); }
+.exam-sections { display:flex;flex-direction:column;gap:18px; }
+.exam-section { border-top:1px solid var(--portalLine);padding-top:12px; }
+.exam-section h3 { margin:0 0 12px;font:700 13px var(--app-font-serif); }
+.field-provenance { color:var(--portal);font:9px var(--app-font-mono);opacity:.7;line-height:1.4; }
 .record-row { display:flex;align-items:center;justify-content:space-between;gap:14px;padding:14px 0;border-top:1px solid var(--portalLine); }
 .record-row:first-of-type { border-top:0; }
 .record-label { font-size:11px;opacity:.58; }
@@ -373,13 +377,27 @@ button { cursor: pointer; }
 .print-sheet { background:white;color:#222;padding:34px;font-family:Georgia,serif; }
 .print-sheet h2 { text-align:center;border-bottom:2px solid #333;padding-bottom:12px; }
 .print-grid { display:grid;grid-template-columns:1fr 1fr;gap:12px; }
-.print-cell { border-bottom:1px solid #bbb;padding:8px 0;font-size:12px;min-height:38px; }
-.print-cell b { display:block;font-size:10px;text-transform:uppercase;color:#555;margin-bottom:4px; }
+.print-banner { text-align:center;font-size:10px; }
+.print-identifiers { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 14px;margin-bottom:18px; }
+.print-section { margin-top:18px; }
+.print-section h3 { border-bottom:1px solid #555;padding-bottom:5px;margin:0 0 8px;font-size:13px;break-after:avoid; }
+.print-cell { border-bottom:1px solid #bbb;padding:6px 0;font-size:11px;min-height:34px;overflow-wrap:anywhere;break-inside:avoid; }
+.print-cell b { display:block;font-size:9px;text-transform:uppercase;color:#555;margin-bottom:4px; }
+.print-cell small { display:block;font:8px var(--app-font-mono);color:#555;margin-top:4px;overflow-wrap:anywhere; }
+.print-provenance { font-size:9px;margin-top:24px; }
 .toast { position:fixed;bottom:20px;right:20px;background:#213d34;color:#f8f5eb;padding:12px 16px;border-radius:5px;font-size:12px;z-index:50;box-shadow:0 8px 24px #152b2530;animation:toast-in .22s ease-out; }
 @keyframes toast-in { from { opacity:0;transform:translateY(8px) } to { opacity:1;transform:translateY(0) } }
 @media(max-width:800px){.portal-nav{flex-wrap:wrap;justify-content:flex-end}.grid-two,.journey-layout{grid-template-columns:minmax(0,1fr)}.grid-two>* ,.journey-layout>* ,.grid-three>*{min-width:0}.grid-three{grid-template-columns:1fr 1fr}.page-heading{align-items:flex-start;flex-direction:column}}
 @media(max-width:560px){.topbar{align-items:flex-start;flex-direction:column}.topbar .demo-chip{align-self:flex-start}.portal-nav{width:100%;justify-content:flex-start;overflow:auto}.portal-nav a{white-space:nowrap;padding:8px}.page-wrap{width:calc(100% - 28px);max-width:100%;padding-top:24px}.field-grid,.grid-three{grid-template-columns:minmax(0,1fr)}.flowline{grid-template-columns:1fr}.flowstep{border-top:0;border-left:2px solid var(--portalLine)}.panel-pad{padding:16px}.field-grid>* ,.dropzone,.print-sheet{min-width:0}.dropzone input{width:100%}.print-grid{grid-template-columns:1fr}.print-sheet{padding:16px}.field-table{min-width:600px}.table-scroll{overflow:auto}}
-@media print { body * { visibility:hidden!important } #print-document,#print-document * {visibility:visible!important} #print-document {position:absolute;inset:0;width:100%;padding:0!important} .no-print {display:none!important} }
+@media print {
+  @page { size:auto;margin:12mm; }
+  body * { visibility:hidden!important }
+  #print-document,#print-document * {visibility:visible!important}
+  #print-document {position:absolute;inset:0;width:100%;padding:0!important;margin:0!important;border:0!important;box-shadow:none!important}
+  #print-document h2 {font-size:16px}
+  #print-document .print-section {break-inside:auto}
+  .no-print {display:none!important}
+}
 
 /**
  * Using the elevate system.

@@ -5,6 +5,10 @@ import {
   FileJson, FileText, FolderOpen, Plus, Printer, RotateCcw,
   ShieldAlert, ShieldCheck, Stethoscope, Trash2, Upload, UserRound, Workflow,
 } from 'lucide-react';
+import {
+  blankExaminationValues, FORM_SECTIONS, makeBlankExamination, PME_TO_AME_FIELDS,
+  type ExaminationType,
+} from './lib/afmsfForms';
 
 type Patient = {
   id: string; name: string; dob: string; sex: string; phone: string; email: string;
@@ -25,9 +29,11 @@ type TransformationReport = {
   direction: string; operator: string; time: string; actions: string[]; warnings: string[]; result: string;
 };
 type Examination = {
-  type: 'PME' | 'AME'; date: string; place: string; authority: string; pastHistory: string;
+  type: ExaminationType; date: string; place: string; authority: string; pastHistory: string;
   generalFindings: string; finalObservations: string; category: string; officer: string;
   examinationRef: string; templateRef: string; provenance: Record<string, string>;
+  values: Record<string, string>; savedAt: string; documentRef: string; documentCreatedAt: string;
+  sourceExaminationRef: string; sourceTransactionRef: string;
 };
 type DemoState = {
   patient: Patient; encounter: Encounter; recordSaved: boolean; publicPackage: ExchangePackage | null;
@@ -40,11 +46,11 @@ type DemoState = {
 const STORAGE_KEY = 'dhanwantri-demo-state-v1';
 const now = () => new Date().toISOString();
 const makeId = (prefix: string) => `${prefix}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
-const blankExam = (): Examination => ({
-  type: 'PME', date: '', place: '', authority: '', pastHistory: '', generalFindings: '',
-  finalObservations: '', category: '', officer: '', examinationRef: makeId('EXAM'),
-  templateRef: 'AFMSF-3A-Ver-2002', provenance: {},
-});
+const blankExam = (type: ExaminationType = 'PME'): Examination => makeBlankExamination(
+  type,
+  makeId(type === 'PME' ? 'PME' : 'AME'),
+  type === 'PME' ? 'AFMSF-3A-Ver-2002' : 'AFMSF-3B-Ver-2002',
+);
 const initialState = (): DemoState => ({
   patient: { id: 'IDH-SYN-2048', name: 'Aarav Sen', dob: '1992-08-14', sex: 'Male', phone: '', email: '', address: '', serviceNumber: '', rank: '', unit: '', service: '' },
   encounter: { id: makeId('ENC'), date: '', complaint: '', history: '', findings: '', assessment: '', plan: '', clinician: '' },
@@ -53,10 +59,61 @@ const initialState = (): DemoState => ({
   adnOutboundPackage: null, publicReleasePackage: null, report: null,
   examination: blankExam(), startedAt: now(),
 });
+function normalizeExamination(value: unknown): Examination {
+  const raw = value && typeof value === 'object' ? value as Partial<Examination> & Record<string, unknown> : {};
+  const type: ExaminationType = raw.type === 'AME' ? 'AME' : 'PME';
+  const fallback = blankExam(type);
+  const values = { ...blankExaminationValues(type) };
+  const incomingValues = raw.values && typeof raw.values === 'object'
+    ? raw.values as Record<string, unknown>
+    : {};
+  Object.entries(incomingValues).forEach(([key, fieldValue]) => {
+    if (typeof fieldValue === 'string' && key in values) values[key] = fieldValue;
+  });
+  const legacyFields: Record<string, string> = {
+    date: 'exam.date',
+    place: 'exam.place',
+    authority: 'exam.authority',
+    pastHistory: 'clinical.past_medical_history',
+    generalFindings: 'clinical.general_observations',
+    finalObservations: 'clinical.final_observations',
+    category: 'category.final',
+    officer: 'exam.officer_acknowledgement',
+  };
+  Object.entries(legacyFields).forEach(([oldKey, newKey]) => {
+    const oldValue = raw[oldKey];
+    if (!values[newKey] && typeof oldValue === 'string' && oldValue) values[newKey] = oldValue;
+  });
+  const provenance = raw.provenance && typeof raw.provenance === 'object'
+    ? Object.fromEntries(Object.entries(raw.provenance as Record<string, unknown>)
+      .filter((entry): entry is [string, string] => typeof entry[1] === 'string'))
+    : {};
+  Object.entries(legacyFields).forEach(([oldKey, newKey]) => {
+    if (!provenance[newKey] && typeof provenance[oldKey] === 'string') provenance[newKey] = provenance[oldKey];
+  });
+  return {
+    ...fallback,
+    ...Object.fromEntries(['date', 'place', 'authority', 'pastHistory', 'generalFindings', 'finalObservations', 'category', 'officer']
+      .map(key => [key, typeof raw[key] === 'string' ? raw[key] as string : ''])),
+    type,
+    examinationRef: typeof raw.examinationRef === 'string' && raw.examinationRef ? raw.examinationRef : fallback.examinationRef,
+    templateRef: typeof raw.templateRef === 'string' && raw.templateRef ? raw.templateRef : fallback.templateRef,
+    values,
+    provenance,
+    savedAt: typeof raw.savedAt === 'string' ? raw.savedAt : '',
+    documentRef: typeof raw.documentRef === 'string' ? raw.documentRef : '',
+    documentCreatedAt: typeof raw.documentCreatedAt === 'string' ? raw.documentCreatedAt : '',
+    sourceExaminationRef: typeof raw.sourceExaminationRef === 'string' ? raw.sourceExaminationRef : '',
+    sourceTransactionRef: typeof raw.sourceTransactionRef === 'string' ? raw.sourceTransactionRef : '',
+  };
+}
 function loadState(): DemoState {
   try {
     const value = localStorage.getItem(STORAGE_KEY);
-    if (value) return { ...initialState(), ...JSON.parse(value) as Partial<DemoState> };
+    if (value) {
+      const parsed = JSON.parse(value) as Partial<DemoState>;
+      return { ...initialState(), ...parsed, examination: normalizeExamination(parsed.examination) };
+    }
   } catch { /* recover with a clean local demo */ }
   return initialState();
 }
@@ -78,6 +135,31 @@ function readPackage(file: File, success: (pkg: ExchangePackage) => void, failur
   };
   reader.onerror = () => failure('The selected file could not be read.');
   reader.readAsText(file);
+}
+function prefillPatientFields(examination: Examination, pkg: ExchangePackage): Examination {
+  const mappings: Array<[string, keyof Patient]> = [
+    ['person.adn_personnel_number', 'serviceNumber'],
+    ['person.rank', 'rank'],
+    ['person.name', 'name'],
+    ['person.unit_ship', 'unit'],
+    ['person.service', 'service'],
+    ['person.date_of_birth', 'dob'],
+    ['person.sex', 'sex'],
+  ];
+  const values = { ...examination.values };
+  const provenance = { ...examination.provenance };
+  let changed = false;
+  mappings.forEach(([formKey, patientKey]) => {
+    const sourceValue = pkg.patient[patientKey];
+    if (values[formKey]?.trim() || !sourceValue?.trim()) return;
+    const source = pkg.provenance?.find(item => item.field === `patient.${patientKey}`);
+    values[formKey] = sourceValue;
+    provenance[formKey] = `${source?.origin === 'enriched' ? 'Workstation-enriched' : 'Imported'} · ${source?.source ?? `ADN ingest patient.${patientKey}`}`;
+    changed = true;
+  });
+  return changed
+    ? { ...examination, values, provenance, savedAt: '', documentRef: '', documentCreatedAt: '' }
+    : examination;
 }
 function App() {
   const [state, setState] = useState<DemoState>(loadState);
@@ -174,9 +256,35 @@ function App() {
       ]);
       provenance = provenance.filter(item => !removedFields.has(item.field));
       if (examination) {
-        if (examination.place) actions.push('Held examination place for operator review; it was omitted from the public package.');
-        if (examination.authority) actions.push('Removed ADN examination authority from the public package.');
-        examination = { ...examination, place: '', authority: '' };
+        const restrictedFormFields = [
+          'person.adn_personnel_number', 'person.rank', 'person.unit_ship', 'person.service',
+          'person.arms_corps', 'person.branch_trade', 'person.commission_type',
+          'person.commission_date', 'person.total_service', 'exam.place', 'exam.authority',
+          'exam.previous_ame_place', 'exam.previous_pme_place', 'category.present',
+          'category.effective_date', 'category.final', 'category.board_fitness',
+          'category.recommendation', 'actor.medical_specialist', 'actor.surgical_specialist',
+          'actor.gynaecologist', 'actor.dental_officer', 'actor.eye_specialist',
+          'actor.ent_specialist', 'actor.medical_attendant', 'actor.approving_authority',
+          'exam.board_place_date', 'exam.board_member_1', 'exam.board_member_2', 'exam.board_president',
+          'exam.officer_acknowledgement',
+        ];
+        const formValues = { ...(examination.values ?? {}) };
+        const formProvenance = { ...examination.provenance };
+        const removedFormFields = restrictedFormFields.filter(key => Boolean(formValues[key]));
+        restrictedFormFields.forEach(key => {
+          formValues[key] = '';
+          delete formProvenance[key];
+        });
+        if (examination.place || examination.authority || removedFormFields.length) {
+          actions.push('Removed military service, category, authority and signature fields from the outgoing examination copy.');
+        }
+        examination = {
+          ...examination,
+          place: '',
+          authority: '',
+          values: formValues,
+          provenance: formProvenance,
+        };
       }
       militaryFields = {};
       actions.push(`Strip MII/PII: removed ${removed.length ? removed.join(', ') : 'military/contact identifiers (none present)'} from outgoing copy only.`);
@@ -217,6 +325,8 @@ function App() {
     update('adnPackage', pkg);
     update('adnOutboundPackage', null);
     update('publicReleasePackage', null);
+    const sourceExamination = pkg.examination ? normalizeExamination(pkg.examination) : state.examination;
+    update('examination', prefillPatientFields(sourceExamination, pkg));
     setImportError('');
     setNotice('ADN ingest package imported. Field provenance is available below.');
     setAdnTab('record');
@@ -250,21 +360,63 @@ function App() {
     update('encounter', { ...state.encounter, [field]: value });
     update('recordSaved', false);
   };
-  const updateExam = (field: keyof Examination, value: string) => {
+  const updateExam = (field: string, value: string) => {
     const provenance = { ...state.examination.provenance, [field]: 'ADN-entered / amended' };
-    update('examination', { ...state.examination, [field]: value, provenance });
+    update('examination', {
+      ...state.examination,
+      values: { ...state.examination.values, [field]: value },
+      provenance,
+      savedAt: '',
+      documentRef: '',
+      documentCreatedAt: '',
+    });
+  };
+  const selectPme = () => {
+    if (state.examination.type === 'PME') return;
+    update('examination', blankExam('PME'));
+    setNotice('Started a blank PME record. No AME-only values were carried back.');
+  };
+  const saveExamination = () => {
+    update('examination', { ...state.examination, savedAt: now(), documentRef: '', documentCreatedAt: '' });
+    setNotice('Structured examination record saved locally.');
+  };
+  const printExamination = () => {
+    if (!state.examination.savedAt) {
+      setNotice('Save the structured examination record before printing.');
+      return;
+    }
+    update('examination', {
+      ...state.examination,
+      documentRef: makeId('DOC'),
+      documentCreatedAt: now(),
+    });
+    window.setTimeout(() => window.print(), 50);
   };
   const createAmE = () => {
     const old = state.examination;
-    const projected: Examination = {
-      ...old, type: 'AME', templateRef: 'AFMSF-3B-Ver-2002', examinationRef: makeId('AME'),
-      date: old.date, place: old.place, authority: old.authority, pastHistory: old.pastHistory,
-      generalFindings: old.generalFindings, finalObservations: old.finalObservations,
-      provenance: Object.fromEntries(['date', 'place', 'authority', 'pastHistory', 'generalFindings', 'finalObservations'].map(key => [key, (old as unknown as Record<string, string>)[key] ? 'Projected from PME' : 'Blank · not available in source'])),
-    };
+    const projected = blankExam('AME');
+    const values = { ...projected.values };
+    const provenance: Record<string, string> = {};
+    PME_TO_AME_FIELDS.forEach(key => {
+      const sourceValue = old.values[key]?.trim();
+      if (!sourceValue) return;
+      values[key] = old.values[key];
+      provenance[key] = `Projected from PME ${old.examinationRef} · ${old.provenance[key] ?? key}`;
+    });
+    const pmeRestEcg = old.values['diag.ecg_rest_dmt']?.trim();
+    if (pmeRestEcg) {
+      values['diag.ecg'] = `PME R / DMT: ${pmeRestEcg}`;
+      provenance['diag.ecg'] = `Projected from PME ${old.examinationRef} · diag.ecg_rest_dmt`;
+    }
+    projected.values = values;
+    projected.provenance = provenance;
+    projected.sourceExaminationRef = old.examinationRef;
+    projected.sourceTransactionRef = state.adnPackage?.transactionId ?? '';
     update('examination', projected);
     setAdnTab('form');
-    setNotice('AME draft projected from available PME fields. Missing values remain blank.');
+    const blankCount = FORM_SECTIONS.AME.flatMap(group => group.fields)
+      .filter(item => !projected.values[item.key]?.trim()).length;
+    setNotice(`AME draft created; ${blankCount} fields remain blank for review or separate completion.`);
   };
   const currentPortal = path.startsWith('/workstation') ? 'workstation' : path.startsWith('/adn') ? 'adn' : 'public';
   const patientPackage = state.adnPackage;
@@ -272,6 +424,9 @@ function App() {
   const patient = patientPackage?.patient ?? state.patient;
   const encounter = patientPackage?.encounter ?? state.encounter;
   const provenanceFor = (field: string) => patientPackage?.provenance?.find(item => item.field === field);
+  const activeFormSections = FORM_SECTIONS[state.examination.type];
+  const blankFormFieldCount = activeFormSections.flatMap(group => group.fields)
+    .filter(item => !state.examination.values[item.key]?.trim()).length;
 
   return (
     <div className={`app-shell portal-${currentPortal}`}>
@@ -449,20 +604,36 @@ function App() {
                   <div className="eyebrow">03 / AFMSF structured examination</div><h2 className="section-title" style={{ marginTop: 8 }}>{state.examination.type === 'PME' ? 'PME · AFMSF 3A' : 'AME · AFMSF 3B'}</h2>
                   <p className="section-sub">Demo form references only. Fields absent from the inbound package or not entered by the officer remain blank.</p>
                   <div className="btn-row" style={{ marginBottom: 16 }}>
-                    <button className={`btn ${state.examination.type === 'PME' ? 'btn-primary' : ''}`} onClick={() => update('examination', { ...state.examination, type: 'PME', templateRef: 'AFMSF-3A-Ver-2002' })} data-testid="button-select-pme">PME · 3A</button>
-                    <button className={`btn ${state.examination.type === 'AME' ? 'btn-primary' : ''}`} onClick={createAmE} data-testid="button-project-ame">Project AME · 3B</button>
+                    <button className={`btn ${state.examination.type === 'PME' ? 'btn-primary' : ''}`} onClick={selectPme} data-testid="button-select-pme">PME · 3A</button>
+                    <button className={`btn ${state.examination.type === 'AME' ? 'btn-primary' : ''}`} onClick={createAmE} disabled={state.examination.type !== 'PME'} data-testid="button-project-ame">Project AME · 3B</button>
                   </div>
-                  <div className="field-grid">
-                    <Field label="Examination date" type="date" value={state.examination.date} onChange={v => updateExam('date', v)} testId="input-exam-date" />
-                    <Field label="Examination place" value={state.examination.place} onChange={v => updateExam('place', v)} testId="input-exam-place" />
-                    <Field label="Authority" value={state.examination.authority} onChange={v => updateExam('authority', v)} testId="input-exam-authority" />
-                    <Field label="Past medical history" value={state.examination.pastHistory} onChange={v => updateExam('pastHistory', v)} testId="input-exam-history" />
-                    <Field label="General examination findings" value={state.examination.generalFindings} onChange={v => updateExam('generalFindings', v)} testId="input-exam-findings" full multiline />
-                    <Field label="Final observations" value={state.examination.finalObservations} onChange={v => updateExam('finalObservations', v)} testId="input-exam-final-observations" full multiline />
-                    <Field label="Medical category / outcome" value={state.examination.category} onChange={v => updateExam('category', v)} testId="input-exam-category" />
-                    <Field label="Medical officer" value={state.examination.officer} onChange={v => updateExam('officer', v)} testId="input-exam-officer" />
+                  <div className="exam-sections">
+                    {activeFormSections.map(group => <section className="exam-section" key={group.title}>
+                      <h3>{group.title}</h3>
+                      <div className="field-grid">
+                        {group.fields.map(item => <Field
+                          key={item.key}
+                          label={item.label}
+                          type={item.type === 'textarea' ? 'text' : item.type}
+                          value={state.examination.values[item.key] ?? ''}
+                          provenance={state.examination.provenance[item.key]}
+                          onChange={value => updateExam(item.key, value)}
+                          testId={`input-form-${item.key.replaceAll('.', '-')}`}
+                          full={item.type === 'textarea'}
+                          multiline={item.type === 'textarea'}
+                        />)}
+                      </div>
+                    </section>)}
                   </div>
-                  <div className="muted-note" style={{ marginTop: 16 }}>Projection carries only overlapping fields actually present in the current PME record. AME-only fields, including immunisation, are left blank and require separate completion.</div>
+                  <div className="btn-row" style={{ marginTop: 18 }}>
+                    <button className="btn btn-primary" onClick={saveExamination} data-testid="button-save-examination"><BadgeCheck size={15} /> Save structured examination</button>
+                    {state.examination.savedAt && <span className="tag" data-testid="status-examination-saved">SAVED · {new Date(state.examination.savedAt).toLocaleString()}</span>}
+                  </div>
+                  <div className="muted-note" style={{ marginTop: 16 }}>
+                    {state.examination.type === 'AME'
+                      ? `Only documented PME-to-AME mappings are projected. ${blankFormFieldCount} fields remain blank; AME-only values such as immunisation require separate entry.`
+                      : `${blankFormFieldCount} fields remain blank. Unknown findings and unavailable source values are not filled in.`}
+                  </div>
                 </section>}
               </div>
               <aside>
@@ -478,23 +649,39 @@ function App() {
                   <p className="section-sub">Generate a local print-to-PDF document from the structured form values.</p>
                   <div className="record-row"><div><div className="record-label">Record reference</div><div className="record-value mono">{state.examination.examinationRef}</div></div></div>
                   <div className="record-row"><div><div className="record-label">Template reference</div><div className="record-value">{state.examination.templateRef}</div></div></div>
-                  <button className="btn btn-primary" style={{ width: '100%', marginTop: 14 }} onClick={() => window.print()} data-testid="button-print-examination"><Printer size={15} /> Print / Save as PDF</button>
+                  <div className="record-row"><div><div className="record-label">Source record</div><div className="record-value mono">{state.examination.sourceExaminationRef || 'Current examination record'}</div></div></div>
+                  <button className="btn btn-primary" style={{ width: '100%', marginTop: 14 }} onClick={printExamination} disabled={!state.examination.savedAt} data-testid="button-print-examination"><Printer size={15} /> Print / Save as PDF</button>
+                  {!state.examination.savedAt && <p className="section-sub" style={{ margin: '10px 0 0' }}>Save the structured examination before printing.</p>}
+                  {state.examination.documentRef && <p className="signature" data-testid="text-document-reference">{state.examination.documentRef} · {state.examination.documentCreatedAt}</p>}
                 </section>
               </aside>
             </div>
             <div id="print-document" className="print-sheet surface" style={{ marginTop: 18 }}>
               <div className="eyebrow no-print">Print preview · structured record source</div>
-              <h2>{state.examination.type === 'PME' ? 'AFMSF 3A · PERIODIC MEDICAL EXAMINATION' : 'AFMSF 3B · ANNUAL MEDICAL EXAMINATION'}</h2>
-              <p style={{ textAlign: 'center', fontSize: 10 }}>DEMO / SYNTHETIC DATA · DOCUMENTARY OUTPUT · TEMPLATE {state.examination.templateRef}</p>
-              <div className="print-grid">
-                <PrintCell label="Patient" value={patient.name} /><PrintCell label="Patient reference" value={patient.id} />
-                <PrintCell label="Date of birth / sex" value={[patient.dob, patient.sex].filter(Boolean).join(' / ')} /><PrintCell label="Service number / rank" value={[patient.serviceNumber, patient.rank].filter(Boolean).join(' / ')} />
-                <PrintCell label="Examination date / place" value={[state.examination.date, state.examination.place].filter(Boolean).join(' / ')} /><PrintCell label="Authority" value={state.examination.authority} />
-                <PrintCell label="Past medical history" value={state.examination.pastHistory} /><PrintCell label="General examination findings" value={state.examination.generalFindings} />
-                <PrintCell label="Final observations" value={state.examination.finalObservations} /><PrintCell label="Medical category / outcome" value={state.examination.category} />
-                <PrintCell label="Medical officer" value={state.examination.officer} /><PrintCell label="Encounter assessment" value={encounter.assessment} />
+              <h2>{state.examination.type === 'PME' ? 'AFMSF 3A (Ver-2002) · PERIODIC / SPECIAL MEDICAL EXAMINATION' : 'AFMSF 3B (Ver 2002) · ANNUAL MEDICAL EXAMINATION'}</h2>
+              <p className="print-banner">DEMO / SYNTHETIC DATA · DOCUMENTARY OUTPUT · TEMPLATE {state.examination.templateRef}</p>
+              <div className="print-identifiers">
+                <PrintCell label="Form reference" value={state.examination.type === 'PME' ? 'AFMSF 3A (Ver-2002)' : 'AFMSF 3B (Ver 2002)'} />
+                <PrintCell label="Record reference" value={state.examination.examinationRef} />
+                <PrintCell label="Document reference" value={state.examination.documentRef || 'Not generated'} />
+                <PrintCell label="Document created" value={state.examination.documentCreatedAt || 'Not generated'} />
+                <PrintCell label="Template version" value={state.examination.templateRef} />
+                <PrintCell label="Source examination record" value={state.examination.sourceExaminationRef || 'Current record'} />
+                <PrintCell label="Source transaction" value={state.examination.sourceTransactionRef || patientPackage?.transactionId || 'Not imported'} />
+                <PrintCell label="Record saved" value={state.examination.savedAt || 'Not saved'} />
               </div>
-              <p style={{ fontSize: 9, marginTop: 24 }}>Record reference: {state.examination.examinationRef} · Source transaction: {patientPackage?.transactionId ?? 'Not imported'} · Template version: {state.examination.templateRef}</p>
+              {activeFormSections.map(group => <section className="print-section" key={`print-${group.title}`}>
+                <h3>{group.title}</h3>
+                <div className="print-grid">
+                  {group.fields.map(item => <PrintCell
+                    key={item.key}
+                    label={item.label}
+                    value={state.examination.values[item.key] ?? ''}
+                    provenance={state.examination.provenance[item.key] || (state.examination.values[item.key] ? 'Origin not recorded' : 'Blank · not available in source')}
+                  />)}
+                </div>
+              </section>)}
+              <p className="print-provenance">Output generated from the saved structured examination record. No digital signature is asserted.</p>
             </div>
           </main>
         </Route>
@@ -525,12 +712,14 @@ function PortalHeader({ active }: { active: 'idh' | 'workstation' | 'adn' }) {
 function PageHeading({ kicker, title, description }: { kicker: string; title: string; description: string }) {
   return <div className="page-heading"><div><div className="eyebrow">{kicker}</div><h1>{title}</h1><p>{description}</p></div><Link href="/" className="btn" data-testid="link-back-journey"><RotateCcw size={14} /> Journey / reset</Link></div>;
 }
-function Field({ label, value, onChange, testId, type = 'text', full = false, multiline = false }: {
-  label: string; value: string; onChange: (value: string) => void; testId: string; type?: string; full?: boolean; multiline?: boolean;
+function Field({ label, value, onChange, testId, type = 'text', full = false, multiline = false, provenance }: {
+  label: string; value: string; onChange: (value: string) => void; testId: string; type?: string; full?: boolean; multiline?: boolean; provenance?: string;
 }) {
   return <div className={`field ${full ? 'full' : ''}`}><label htmlFor={testId}>{label}</label>{multiline
     ? <textarea id={testId} data-testid={testId} value={value} onChange={event => onChange(event.target.value)} />
-    : <input id={testId} data-testid={testId} type={type} value={value} onChange={event => onChange(event.target.value)} />}</div>;
+    : <input id={testId} data-testid={testId} type={type} value={value} onChange={event => onChange(event.target.value)} />}
+    <small className="field-provenance" data-testid={`provenance-${testId.slice('input-form-'.length)}`}>{provenance || (value ? 'ADN-entered / amended' : 'Blank · no value available')}</small>
+  </div>;
 }
 function PackageImporter({ onFile }: { onFile: (file: File) => void }) {
   const handle = (event: ChangeEvent<HTMLInputElement>) => {
@@ -571,8 +760,8 @@ function ProvenanceMark({ item }: { item?: Provenance }) {
 function EmptyState({ icon, title, body }: { icon: ReactNode; title: string; body: string }) {
   return <div style={{ padding: '24px 4px', textAlign: 'center' }}><div style={{ display: 'flex', justifyContent: 'center', opacity: .58 }}>{icon}</div><h3 className="section-title" style={{ marginTop: 10 }}>{title}</h3><p className="section-sub" style={{ marginBottom: 0 }}>{body}</p></div>;
 }
-function PrintCell({ label, value }: { label: string; value: string }) {
-  return <div className="print-cell"><b>{label}</b>{value || '\u00a0'}</div>;
+function PrintCell({ label, value, provenance }: { label: string; value: string; provenance?: string }) {
+  return <div className="print-cell"><b>{label}</b><span>{value || '\u00a0'}</span>{provenance && <small>{provenance}</small>}</div>;
 }
 function NotFound() {
   return <div className="page-wrap"><div className="surface panel-pad"><div className="eyebrow">Unknown portal</div><h1 className="section-title" style={{ fontSize: 28, marginTop: 10 }}>This route is not in the demo.</h1><Link href="/" className="btn btn-primary" style={{ marginTop: 16 }}><ArrowRight size={15} /> Return to journey</Link></div></div>;
