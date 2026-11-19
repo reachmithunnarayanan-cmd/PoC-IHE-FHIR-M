@@ -10,18 +10,23 @@ This log records the current agreed baseline. Revisit a decision only when new e
 | D-004 | Build a visual, functional PoC, not a production architecture review. | Optimise for committee comprehension, continuity and reliability. |
 | D-005 | Use one synthetic patient journey end to end. | Makes data reuse and interoperability visible. |
 | D-006 | Structured data is authoritative; PDFs are generated documentary outputs. | Avoid PDF-centric exchange and reverse extraction. |
-| D-007 | FHIR/ABDM-compatible profiles are used at the internet-side exchange boundary. | Enables standards-oriented exchange without forcing FHIR as ADN's internal model. |
-| D-008 | ADN retains an AFMSF-oriented internal model. | Map only the fields needed for military patient/examination workflows. |
-| D-009 | The exchange workstation performs explicit Add MII/PII and Strip MII/PII transformations on structured data. | Demonstrates controlled transformation, not merely PDF redaction. |
-| D-010 | Missing data remains blank and provenance is visible. | Avoid fabricated values and preserve trust in reused data. |
-| D-011 | AME is AFMSF 3B; PME is AFMSF 3A. | Use the uploaded forms as field/layout authority. |
-| D-012 | The PoC uses explicit package export/import to represent transfer. | Do not imply real classified connectivity or security segregation. |
-| D-013 | Hostinger Premium is the intended primary and BigRock the standby deployment. | Keep deployment practical; verify runtime constraints before implementation. |
+| D-007 | ADN retains an AFMSF-oriented internal model; the PoC public-side exchange uses FHIR-inspired structured XML. | Standards-oriented representation without making formal conformance a PoC dependency. |
+| D-008 | The exchange workstation performs direction-specific pass, transform, add/enrich, remove and hold actions on structured fields. | Demonstrates controlled transformation, not merely PDF redaction. |
+| D-009 | Missing data remains blank and provenance is visible. | Avoid fabricated values and preserve trust in reused data. |
+| D-010 | AME is AFMSF 3B; PME is AFMSF 3A. | Uploaded forms are the field/layout authority. |
+| D-011 | Use the union of AFMSF 3A and 3B fields as a canonical field superset with explicit form and domain mappings. | Common vocabulary supports both form workflows and cross-domain projections. |
+| D-012 | A completed PME record must be capable of generating an AME projection. | Reuse overlapping fields; identify AME-only/missing fields for completion; never invent values. |
+| D-013 | ADN-to-public exchange strips military-only and otherwise excluded fields before producing the XML package. | The outgoing package is a direction-specific subset; removal does not alter the ADN source. |
+| D-014 | Public-to-ADN exchange maps only permitted incoming fields and must not silently overwrite authoritative ADN identity, service or examination decisions. | Preserve domain ownership and source provenance. |
+| D-015 | The PoC XML is FHIR-inspired and representational, not required to validate as FHIR or an ABDM profile. | Formal ABDM profile/version selection, schema validation and conformance are deferred to Alpha/Beta. |
+| D-016 | The PoC uses explicit package export/import to represent transfer. | Do not imply real classified connectivity or security segregation. |
+| D-017 | Use synthetic data only. | No real patient or operational military data in the demonstration. |
+| D-018 | Hostinger Premium is the intended primary and BigRock the standby deployment. | Keep deployment practical; verify runtime constraints before implementation. |
 
 ## Open implementation choices
 
-- Final framework/runtime and deployment adapter, selected for the actual shared-hosting capabilities.
-- Exact ABDM implementation guide/profile versions and resource set for the demo Bundle.
-- Exact field-level 3A mapping after visual inspection of the uploaded source PDF.
+- Final framework/runtime and deployment adapter, selected for actual shared-hosting capabilities.
+- Alpha/Beta selection of formal ABDM implementation guide/profile versions, FHIR version, resource set, terminology bindings and validation approach.
+- Detailed mapping implementation and completion rules for every AME/PME field.
 - Final PDF template rendering approach and coordinate mapping.
 - Final synthetic identity and military-field fixture values.
