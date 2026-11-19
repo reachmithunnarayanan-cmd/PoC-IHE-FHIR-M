@@ -35,7 +35,7 @@ Repeat the same steps independently using the same release files. Test its URL b
 4. Keep the **Public → ADN** direction selected. Review field selection, apply the profile and inspect the transformation report.
 5. Export the ADN-ingest JSON package.
 6. In **Dhanwantri 3.0 ADN**, load the latest local package (or import the downloaded JSON).
-7. Inspect imported values and their provenance. Open PME or AME, save the structured examination record, and use the print action to create a PDF via the browser print dialog.
+7. Inspect imported values and their provenance. Open PME (AFMSF 3A) or AME (AFMSF 3B), complete the structured sections, use the dental tooth-status chart where relevant, save the examination record, and use the print action. Confirm 3A prints as three A4 pages and 3B as two A4 pages in the browser print dialog.
 8. Rehearse the outbound **ADN → Public** strip demonstration separately. Review the field allowlist and export the stripped XML.
 
 ## Important implementation boundaries
@@ -43,8 +43,8 @@ Repeat the same steps independently using the same release files. Test its URL b
 - The public-side package is human-readable **FHIR-inspired XML** for representation only. It is not schema-validated FHIR serialization and is not claimed to conform to an ABDM profile.
 - Package hand-off is simulated through browser-local storage or manual file export/import. It is not a live cross-domain transfer.
 - The three portals are distinct visual surfaces in one static application, not isolated security domains.
-- The examination workspace now follows the distinct AFMSF 3A (Ver-2002) and AFMSF 3B (Ver 2002) section sequence and source-form labels, with a clean structured screen and print-friendly layout. The generated PDF is a presentation facsimile, not the official AFMSF artwork or a certified form; verify against the issuing authority's current master before any formal use.
-- PDF output uses the browser print dialog and a clean AFMSF-labelled presentation template. It is not the official form artwork and is not digitally signed.
+- The examination workspace now follows the distinct AFMSF 3A (Ver-2002) and AFMSF 3B (Ver 2002) section sequence and source-form labels, with a clean structured screen and print-friendly layout. The print layout uses explicit three-page 3A / two-page 3B pagination, confidential headers, continuation identifiers, dental chart marks and signature spaces. It is a presentation facsimile, not the official AFMSF artwork or a certified form; verify against the issuing authority's current master before any formal use.
+- PDF output uses the browser print dialog and a clean AFMSF-labelled, paginated presentation template. It is not the official form artwork and is not digitally signed.
 - Profiles, records and audit-like views are client-side demonstration behaviour. There is no server-side authentication, authorisation, database persistence, durable audit service, approved sanitisation engine or production identity assurance.
 - The workstation's field rules are illustrative PoC defaults, not an approved operational sanitisation policy.
 - Use synthetic data only. Never enter real patient, personnel, operational or classified information.
