@@ -43,8 +43,8 @@ Repeat the same steps independently using the same release files. Test its URL b
 - The public-side package is human-readable **FHIR-inspired XML** for representation only. It is not schema-validated FHIR serialization and is not claimed to conform to an ABDM profile.
 - Package hand-off is simulated through browser-local storage or manual file export/import. It is not a live cross-domain transfer.
 - The three portals are distinct visual surfaces in one static application, not isolated security domains.
-- The current examination workspace is a structured generic demo layout, not a reproduction of the official AFMSF 3A/3B form artwork. Verify exact source-form labels, field order and layout before treating generated output as a formal form.
-- PDF output uses the browser print dialog and a generic demonstration template. It is not digitally signed.
+- The examination workspace now follows the distinct AFMSF 3A (Ver-2002) and AFMSF 3B (Ver 2002) section sequence and source-form labels, with a clean structured screen and print-friendly layout. The generated PDF is a presentation facsimile, not the official AFMSF artwork or a certified form; verify against the issuing authority's current master before any formal use.
+- PDF output uses the browser print dialog and a clean AFMSF-labelled presentation template. It is not the official form artwork and is not digitally signed.
 - Profiles, records and audit-like views are client-side demonstration behaviour. There is no server-side authentication, authorisation, database persistence, durable audit service, approved sanitisation engine or production identity assurance.
 - The workstation's field rules are illustrative PoC defaults, not an approved operational sanitisation policy.
 - Use synthetic data only. Never enter real patient, personnel, operational or classified information.
