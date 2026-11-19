@@ -2,15 +2,25 @@ export type ExaminationType = 'PME' | 'AME';
 export type ExaminationField = {
   key: string;
   label: string;
-  type: 'text' | 'date' | 'number' | 'textarea';
+  type: 'text' | 'date' | 'number' | 'textarea' | 'select';
+  options?: string[];
 };
 export type ExaminationSection = { title: string; fields: ExaminationField[] };
+export type ExaminationPage = {
+  number: number;
+  total: number;
+  title: string;
+  continuation?: boolean;
+  continuationIdentity?: boolean;
+  sections: ExaminationSection[];
+};
 
 const field = (
   key: string,
   label: string,
   type: ExaminationField['type'] = 'text',
-): ExaminationField => ({ key, label, type });
+  options?: string[],
+): ExaminationField => ({ key, label, type, options });
 const section = (title: string, ...fields: ExaminationField[]): ExaminationSection => ({ title, fields });
 
 const examinationHeader = section(
@@ -21,26 +31,26 @@ const examinationHeader = section(
 );
 
 const personalService = section(
-  'Personal and service details',
-  field('person.adn_personnel_number', 'Number / service number'),
-  field('person.rank', 'Rank'),
-  field('person.name', 'Name'),
-  field('person.unit_ship', 'Unit / ship'),
-  field('person.service', 'Service'),
-  field('person.arms_corps', 'Arms / Corps / Arm'),
+  'Personal data · fields 1–11',
+  field('person.adn_personnel_number', '1. Number'),
+  field('person.rank', '2. Rank'),
+  field('person.name', '3. Name'),
+  field('person.unit_ship', '4. Unit / ship'),
+  field('person.service', '5. Service'),
+  field('person.arms_corps', '6. Arms / Corps / Arm'),
   field('person.branch_trade', 'Branch / trade'),
-  field('person.date_of_birth', 'Date of birth', 'date'),
-  field('person.sex', 'Sex'),
-  field('person.commission_type', 'Commission type (PC / SSC)'),
-  field('person.commission_date', 'Date of commission', 'date'),
-  field('person.total_service', 'Total service'),
+  field('person.date_of_birth', '7. Date of birth', 'date'),
+  field('person.sex', 'Sex (M / F)'),
+  field('person.commission_type', '9. Type of commission (PC / SSC)'),
+  field('person.commission_date', '10. Date of commission', 'date'),
+  field('person.total_service', '11. Total service'),
 );
 
 const personalHistory = section(
-  'Medical history and category',
-  field('clinical.past_medical_history', 'Past medical history', 'textarea'),
-  field('exam.previous_ame_place', 'Last AME carried out at'),
-  field('exam.previous_ame_date', 'Last AME date', 'date'),
+  'Medical history and previous examination',
+  field('clinical.past_medical_history', '12. Past medical history', 'textarea'),
+  field('exam.previous_ame_place', '14. Last AME / PME carried out at'),
+  field('exam.previous_ame_date', 'Previous examination date', 'date'),
 );
 
 const physicalCapacity = section(
@@ -106,13 +116,16 @@ const commonLaboratory = section(
 const chestXray = field('diag.chest_xray_pa', 'Chest X-ray PA number / date / report');
 const respiratory = field('exam.respiratory', 'Respiratory system findings', 'textarea');
 const locomotor = section(
-  'Locomotor and surgical examination',
+  'Surgical examination',
   field('exam.locomotor', 'Locomotor system', 'textarea'),
-  field('exam.spine', 'Spine', 'textarea'),
+  field('exam.spine', 'Spine'),
   field('exam.hernia', 'Hernia'),
   field('exam.hydrocele', 'Hydrocele'),
   field('exam.haemorrhoids', 'Haemorrhoids'),
   field('exam.breast', 'Breast findings'),
+  field('exam.surgery_remarks', 'Remarks', 'textarea'),
+  field('exam.surgery_date', 'Date', 'date'),
+  field('actor.surgical_specialist', 'Signature of Surgical Specialist'),
 );
 
 const gynaecology = section(
@@ -126,6 +139,9 @@ const gynaecology = section(
   field('exam.gynaecology.vaginal_discharge', 'Vaginal discharge'),
   field('exam.gynaecology.prolapse', 'Prolapse'),
   field('exam.gynaecology.usg_abdomen', 'USG abdomen'),
+  field('exam.gynaecology_remarks', 'Remarks', 'textarea'),
+  field('exam.gynaecology_date', 'Date', 'date'),
+  field('actor.gynaecologist', 'Signature of Gynaecologist'),
 );
 
 const dental = section(
@@ -136,6 +152,8 @@ const dental = section(
   field('dental.gum_condition', 'Condition of gums'),
   field('dental.tooth_chart', 'Tooth chart markings (missing - / unsaveable x)', 'textarea'),
   field('dental.remarks', 'Dental remarks', 'textarea'),
+  field('exam.dental_date', 'Date', 'date'),
+  field('actor.dental_officer', 'Dental officer signature'),
 );
 
 const eyeCommon = section(
@@ -144,30 +162,6 @@ const eyeCommon = section(
   field('eye.near_vision', 'Near vision (right / left; with / without glasses)'),
   field('eye.glasses_power', 'Spectacle power'),
   field('eye.colour_perception', 'Colour perception (CP)'),
-  field('eye.remarks', 'Eye remarks', 'textarea'),
-);
-
-const entCommon = section(
-  'Hearing and ENT examination',
-  field('ent.hearing', 'Hearing (right / left / both)'),
-  field('ent.hearing_fw', 'FW measurements (right / left / both)'),
-  field('ent.hearing_cv', 'CV measurements (right / left / both)'),
-  field('ent.audiometry', 'Audiometry record'),
-  field('ent.nose', 'Nose findings', 'textarea'),
-  field('ent.throat', 'Throat findings', 'textarea'),
-);
-
-const finalObservations = field('clinical.final_observations', 'Final observations', 'textarea');
-const officerAcknowledgement = field('exam.officer_acknowledgement', 'Officer signature reference and date');
-const categoryFinal = field('category.final', 'Final medical category / outcome');
-const approvingAuthority = field(
-  'actor.approving_authority',
-  'Approving / perusing authority, signature, rank, place and date',
-  'textarea',
-);
-
-const pmeEye = section(
-  'Additional eye examination',
   field('eye.trachoma_other_disease', 'Trachoma, complications or other disease', 'textarea'),
   field('eye.binocular_vision_grade', 'Binocular vision and grade'),
   field('eye.hypermetropia', 'Manifest hypermetropia (right / left)'),
@@ -179,6 +173,31 @@ const pmeEye = section(
   field('eye.night_visual_capacity', 'Night visual capacity'),
   field('eye.convergence', 'Convergence C / SC measurements'),
   field('eye.accommodation', 'Accommodation (right / left)'),
+  field('eye.remarks', 'Eye remarks', 'textarea'),
+  field('exam.eye_date', 'Date', 'date'),
+  field('actor.eye_specialist', 'Signature of Eye Specialist'),
+);
+
+const entCommon = section(
+  'Hearing and ENT examination',
+  field('ent.hearing', 'Hearing (right / left / both)'),
+  field('ent.hearing_fw', 'FW measurements (right / left / both)'),
+  field('ent.hearing_cv', 'CV measurements (right / left / both)'),
+  field('ent.audiometry', 'Audiometry record'),
+  field('ent.nose', 'Nose findings', 'textarea'),
+  field('ent.throat', 'Throat findings', 'textarea'),
+  field('ent.remarks', 'Remarks', 'textarea'),
+  field('exam.ent_date', 'Date', 'date'),
+  field('actor.ent_specialist', 'Signature of ENT Specialist'),
+);
+
+const finalObservations = field('clinical.final_observations', 'Final observations', 'textarea');
+const officerAcknowledgement = field('exam.officer_acknowledgement', 'Officer signature reference and date');
+const categoryFinal = field('category.final', 'Final medical category / outcome');
+const approvingAuthority = field(
+  'actor.approving_authority',
+  'Approving authority signature, rank and designation',
+  'textarea',
 );
 
 const pmeEnt = section(
@@ -189,116 +208,173 @@ const pmeEnt = section(
 );
 
 const pmeSpecialists = section(
-  'Specialists and medical board',
-  field('actor.medical_specialist', 'Medicine specialist identity / signature / date'),
-  field('actor.surgical_specialist', 'Surgical specialist identity / signature / date'),
-  field('actor.gynaecologist', 'Gynaecologist identity / signature / date'),
-  field('actor.dental_officer', 'Dental officer identity / signature / date'),
-  field('actor.eye_specialist', 'Eye specialist identity / signature / date'),
-  field('actor.ent_specialist', 'ENT specialist identity / signature / date'),
+  'Approving and perusing authorities',
   field('exam.board_place_date', 'Medical board place and date'),
   field('exam.board_member_1', 'Member-1'),
   field('exam.board_member_2', 'Member-2'),
   field('exam.board_president', 'President Medical Board'),
+  field('exam.approving_authority_place', 'Approving authority place'),
+  field('exam.approving_authority_date', 'Approving authority date', 'date'),
   approvingAuthority,
+  field('exam.perusing_authority_place', 'Perusing authority place'),
+  field('exam.perusing_authority_date', 'Perusing authority date', 'date'),
+  field('actor.perusing_authority', 'Perusing authority signature, rank and designation', 'textarea'),
 );
 
-export const FORM_SECTIONS: Record<ExaminationType, ExaminationSection[]> = {
+const agePme = section('Age', field('person.age_years', '8. Age (years)', 'number'), field('person.age_months', 'Age (months)', 'number'));
+const ageAme = section('Age', field('person.age_years', '8. Age (years)', 'number'));
+const pmeMedicine = section(
+  '15 · Medicine',
+  ...physicalCapacity.fields,
+  ...cardiovascular.fields,
+  respiratory,
+  ...gastrointestinal.fields,
+  ...cns.fields,
+  ...commonLaboratory.fields,
+  field('lab.urea', 'Urea (mg/dL)'),
+  field('lab.creatinine', 'Creatinine (mg/dL)'),
+  field('lab.uric_acid', 'Uric acid (mg/dL)'),
+  field('diag.ecg_rest_dmt', 'ECG R / DMT number, date and report'),
+  field('diag.ecg_tmt', 'ECG TMT number, date and report'),
+  chestXray,
+  field('clinical.medicine_remarks', 'Remarks', 'textarea'),
+  field('exam.medicine_date', 'Date', 'date'),
+  field('actor.medical_specialist', 'Signature of Medical Specialist'),
+);
+const pmePersonal = section(
+  'Personal Data',
+  ...personalService.fields,
+  ...agePme.fields,
+  personalHistory.fields[0],
+  field('category.present', '13. Present medical category'),
+  personalHistory.fields[1],
+  officerAcknowledgement,
+);
+const continuationIdentity = section(
+  'Continuation identity strip',
+  personalService.fields[0],
+  personalService.fields[1],
+  personalService.fields[2],
+  field('person.individual_signature', 'INDL SIGN'),
+);
+const pmeEyeSection = section('19 · Eye', ...eyeCommon.fields);
+const pmeEntSection = section('20 · ENT', ...entCommon.fields, ...pmeEnt.fields);
+const pmeFinal = section(
+  'Final observations & medical category',
+  finalObservations,
+  personalHistory.fields[1],
+  field('category.board_fitness', 'Found fit in medical category'),
+  field('exam.place', 'Present PME carried out at'),
+  field('category.final', 'Final medical category / outcome'),
+  field('category.recommendation', 'Specialist / board recommendation', 'textarea'),
+  field('exam.final_place', 'Place'),
+  field('exam.final_date', 'Date', 'date'),
+);
+
+const amePersonal = section(
+  'Personal Data',
+  ...personalService.fields,
+  ...ageAme.fields,
+  personalHistory.fields[0],
+  field('category.present', 'Present medical category'),
+  field('category.effective_date', 'Present medical category effective date (wef)', 'date'),
+  personalHistory.fields[1],
+  personalHistory.fields[2],
+  field('exam.previous_report_ref', 'Previous AME / PME report reference'),
+  officerAcknowledgement,
+);
+const ameInvestigations = section(
+  '16 · Investigations',
+  ...commonLaboratory.fields,
+  chestXray,
+  field('diag.ecg', 'ECG number, date and report'),
+);
+const amePhysicalSystem = section(
+  '17 · Physical Capacity and system examination',
+  ...physicalCapacity.fields,
+  ...cardiovascular.fields,
+  respiratory,
+  ...gastrointestinal.fields,
+  ...cns.fields,
+);
+const ameHearing = section(
+  '20 · Hearing',
+  ...entCommon.fields.slice(0, 4),
+  field('ent.tympanic_membrane_intact', 'Tympanic membrane intact (Y / N)', 'select', ['Yes', 'No']),
+  field('ent.mobility_valsalva', 'Mobility (Valsalva)'),
+  ...entCommon.fields.slice(4),
+  field('ent.sinuses', 'Sinus findings'),
+);
+const ameFinal = section(
+  'Final observations & medical category',
+  finalObservations,
+  categoryFinal,
+  field('category.recommendation', 'Specialist / board recommendation', 'textarea'),
+  field('exam.final_place', 'Place'),
+  field('exam.final_date', 'Date', 'date'),
+);
+const ameAuthorities = section(
+  'Approving / perusing authority',
+  field('actor.medical_attendant', 'Authorised Medical Attendant / Medical Specialist'),
+  field('exam.approving_authority_place', 'Approving authority place'),
+  field('exam.approving_authority_date', 'Approving authority date', 'date'),
+  approvingAuthority,
+  field('exam.perusing_authority_place', 'Perusing authority place'),
+  field('exam.perusing_authority_date', 'Perusing authority date', 'date'),
+  field('actor.perusing_authority', 'Perusing authority signature, rank and designation', 'textarea'),
+);
+
+export const FORM_PAGES: Record<ExaminationType, ExaminationPage[]> = {
   PME: [
-    examinationHeader,
-    personalService,
-    section('Age', field('person.age_years', 'Age (years)', 'number'), field('person.age_months', 'Age (months)', 'number')),
-    personalHistory,
-    section('Medicine — physical capacity', ...physicalCapacity.fields),
-    section('Medicine — cardiovascular', ...cardiovascular.fields),
-    section('Medicine — respiratory', respiratory),
-    section('Medicine — gastrointestinal', ...gastrointestinal.fields),
-    section('Medicine — central nervous system', ...cns.fields),
-    section('Medicine — investigations', ...commonLaboratory.fields,
-      field('lab.urea', 'Urea (mg/dL)'),
-      field('lab.creatinine', 'Creatinine (mg/dL)'),
-      field('lab.uric_acid', 'Uric acid (mg/dL)'),
-      field('diag.ecg_rest_dmt', 'ECG R / DMT number, date and report'),
-      field('diag.ecg_tmt', 'ECG TMT number, date and report'),
-      chestXray),
-    locomotor,
-    gynaecology,
-    dental,
-    eyeCommon,
-    pmeEye,
-    entCommon,
-    pmeEnt,
-    section(
-      'Final observations and medical category',
-      finalObservations,
-      field('clinical.general_observations', 'General examination observations (optional extension)', 'textarea'),
-      field('category.present', 'Present medical category'),
-      field('category.final', 'Final medical category / outcome'),
-      field('category.board_fitness', 'Found fit in medical category'),
-      field('category.recommendation', 'Specialist / board recommendation', 'textarea'),
-      officerAcknowledgement,
-    ),
-    pmeSpecialists,
+    { number: 1, total: 3, title: 'AFMSF 3A · Page 1', sections: [examinationHeader, pmePersonal, pmeMedicine] },
+    {
+      number: 2, total: 3, title: 'AFMSF 3A · Page 2',
+      sections: [
+        section('16 · Surgery', ...locomotor.fields),
+        section('17 · Gynaecology', ...gynaecology.fields),
+        section('18 · Dental', ...dental.fields),
+        pmeEyeSection,
+      ],
+    },
+    {
+      number: 3, total: 3, title: 'AFMSF 3A · Page 3', continuation: true, continuationIdentity: true,
+      sections: [
+        continuationIdentity,
+        pmeEntSection,
+        pmeFinal,
+        section('Medical board signatures and authorities', ...pmeSpecialists.fields),
+      ],
+    },
   ],
   AME: [
-    examinationHeader,
-    personalService,
-    section('Age', field('person.age_years', 'Age (years)', 'number')),
-    section(
-      'Medical history and previous examinations',
-      field('clinical.past_medical_history', 'Past medical history', 'textarea'),
-      field('category.present', 'Present medical category'),
-      field('category.effective_date', 'Present medical category effective date (wef)', 'date'),
-      field('clinical.general_observations', 'General examination observations (optional extension)', 'textarea'),
-      field('exam.previous_ame_place', 'Previous AME carried out at'),
-      field('exam.previous_ame_date', 'Previous AME date', 'date'),
-      field('exam.previous_pme_place', 'Previous PME carried out at'),
-      field('exam.previous_pme_date', 'Previous PME date', 'date'),
-      field('exam.previous_report_ref', 'Previous AME / PME report reference'),
-    ),
-    dental,
-    section('Investigations — blood and urine', ...commonLaboratory.fields.slice(0, 13)),
-    section('Investigations — blood sugar and lipid profile', ...commonLaboratory.fields.slice(13)),
-    section(
-      'Investigations — radiology and ECG',
-      chestXray,
-      field('diag.ecg', 'ECG number, date and report'),
-    ),
-    physicalCapacity,
-    cardiovascular,
-    section('Respiratory examination', respiratory),
-    gastrointestinal,
-    cns,
-    locomotor,
-    eyeCommon,
-    section(
-      'Hearing and ENT examination',
-      entCommon.fields[0],
-      entCommon.fields[1],
-      entCommon.fields[2],
-      field('ent.tympanic_membrane_intact', 'Tympanic membrane intact (Y / N)'),
-      field('ent.mobility_valsalva', 'Mobility (Valsalva)'),
-      entCommon.fields[3],
-      entCommon.fields[4],
-      entCommon.fields[5],
-      field('ent.sinuses', 'Sinus findings'),
-    ),
-    gynaecology,
-    section('Immunisation', field('immunisation.record', 'Immunisation details', 'textarea')),
-    section(
-      'Final observations and medical category',
-      finalObservations,
-      categoryFinal,
-      field('category.recommendation', 'Specialist / board recommendation', 'textarea'),
-    ),
-    section(
-      'Examining and approving authorities',
-      officerAcknowledgement,
-      field('actor.dental_officer', 'Dental officer identity / signature / date'),
-      field('actor.medical_attendant', 'Authorised Medical Attendant / Medical Specialist'),
-      approvingAuthority,
-    ),
+    {
+      number: 1, total: 2, title: 'AFMSF 3B · Page 1',
+      sections: [
+        examinationHeader,
+        amePersonal,
+        section('15 · Dental', ...dental.fields),
+        ameInvestigations,
+        amePhysicalSystem,
+      ],
+    },
+    {
+      number: 2, total: 2, title: 'AFMSF 3B · Page 2', continuation: true,
+      sections: [
+        section('18 · Surgery / Locomotor system', ...locomotor.fields.slice(0, 6)),
+        section('19 · Vision', ...eyeCommon.fields),
+        ameHearing,
+        section('21 · Gynaecological Examination', ...gynaecology.fields.slice(0, 9)),
+        section('22 · Immunization', field('immunisation.record', 'Immunisation details', 'textarea')),
+        ameFinal,
+        ameAuthorities,
+      ],
+    },
   ],
+};
+
+export const FORM_SECTIONS: Record<ExaminationType, ExaminationSection[]> = {
+  PME: FORM_PAGES.PME.flatMap(page => page.sections),
+  AME: FORM_PAGES.AME.flatMap(page => page.sections),
 };
 
 export function blankExaminationValues(type: ExaminationType): Record<string, string> {
