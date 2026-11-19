@@ -1,61 +1,66 @@
 # Shared-hosting deployment package
 
-This folder contains the **currently implemented Secure Data Exchange Workstation field-configuration prototype**. It is a static browser application and can be deployed on Hostinger Premium or a typical BigRock Linux shared-hosting account.
-
-It is **not yet the complete three-portal i-Dhanwantri / Secure Data Exchange Workstation / Dhanwantri 3.0 ADN PoC**. The other two portals, connected import/export workflow, server-side profiles, persistent audit store, and production identity controls are not implemented by this package.
+This folder contains the integrated **three-portal visual interoperability PoC**. It is a static browser application intended for Hostinger Premium (primary) and BigRock (standby).
 
 ## Contents
 
-- `index.html` — standalone workstation prototype (includes CSS and JavaScript).
-- `.htaccess` — Apache directory and basic response-header settings.
+- `index.html` — i-Dhanwantri, Secure Data Exchange Workstation and Dhanwantri 3.0 ADN demo in one browser application.
+- `.htaccess` — Apache/LiteSpeed-compatible directory and basic response-header settings.
+- `DEPLOYMENT.md` — these deployment and rehearsal instructions.
 
-## Requirements
+## Hosting requirements
 
 - Linux shared hosting with Apache/LiteSpeed-compatible `.htaccess` support.
-- A domain or subdomain pointed at the hosting account.
-- HTTPS enabled for the domain.
-- No Node.js, PHP, Composer, database, or build step is required for this static prototype.
+- A domain/subdomain with HTTPS enabled.
+- No Node.js, PHP, Composer, database or build step is required for this static release.
 
-## Hostinger primary deployment
+## Deploy on Hostinger (primary)
 
-1. Create a subdomain for the demonstration, for example `workstation.example.com`, or use a dedicated directory under the domain.
-2. Point its document root to a new, empty directory (recommended: `public_html/workstation`).
-3. Enable an SSL certificate and force HTTPS using the hosting control panel.
-4. Upload the contents of this folder—not the enclosing folder—to the document root. Ensure `index.html` and `.htaccess` are directly inside it.
-5. Visit the HTTPS URL in a private/incognito browser window.
-6. Test both direction tabs, search, group and field selection, locked exclusions, Apply, Save, and Restore defaults.
-7. Record the final URL and keep a local copy of the exact uploaded files.
+1. Create a dedicated subdomain or directory, e.g. `demo.example.com` or `public_html/demo/`.
+2. Point the document root at that empty directory.
+3. Enable SSL and force HTTPS in the hosting control panel.
+4. Upload the contents of this folder directly into the document root. `index.html` and `.htaccess` must be at its top level.
+5. Open the HTTPS URL in a private/incognito browser window.
+6. Complete the smoke test below on the actual presentation laptop and browser.
 
-## BigRock standby deployment
+## Deploy on BigRock (standby)
 
-1. Create the corresponding subdomain/directory in BigRock.
-2. Enable HTTPS and upload the same contents.
-3. Run the same smoke test independently.
-4. Keep the standby URL documented. Do not depend on DNS changes or propagation during the committee demonstration.
+Repeat the same steps independently using the same release files. Test its URL before the committee presentation and keep that URL recorded. Do not depend on DNS changes or propagation during the demonstration.
 
-## Updating the prototype
+## End-to-end smoke test
 
-Replace `index.html` with the newer version from this folder, then hard-refresh the browser. Keep a dated copy of the previous version for rollback. The profile currently saves in browser-local storage; browser storage is not synchronised between devices or hosting providers.
+1. In **i-Dhanwantri**, register/update the prefilled synthetic patient and save the clinical encounter.
+2. Generate and download the FHIR-inspired XML package.
+3. In **Secure Data Exchange Workstation**, load the current browser-local package (or import the downloaded XML).
+4. Keep the **Public → ADN** direction selected. Review field selection, apply the profile and inspect the transformation report.
+5. Export the ADN-ingest JSON package.
+6. In **Dhanwantri 3.0 ADN**, load the latest local package (or import the downloaded JSON).
+7. Inspect imported values and their provenance. Open PME or AME, save the structured examination record, and use the print action to create a PDF via the browser print dialog.
+8. Rehearse the outbound **ADN → Public** strip demonstration separately. Review the field allowlist and export the stripped XML.
 
-## Demonstration safety and limitations
+## Important implementation boundaries
 
-- Use synthetic data only. Do not enter real patient, personnel, operational, or classified information.
-- The current panel is a front-end interaction prototype. Client-side checkboxes are not a security boundary.
-- Saved profiles are local to the browser. There is no server-side authentication, authorisation, database persistence, package generation, cryptographic sanitisation, or durable audit trail in this static release.
-- The displayed locked exclusions are illustrative PoC defaults, not an approved operational sanitisation policy.
-- Hosting the three visual portals on one shared-hosting account would not create security or domain segregation.
+- The public-side package is human-readable **FHIR-inspired XML** for representation only. It is not schema-validated FHIR serialization and is not claimed to conform to an ABDM profile.
+- Package hand-off is simulated through browser-local storage or manual file export/import. It is not a live cross-domain transfer.
+- The three portals are distinct visual surfaces in one static application, not isolated security domains.
+- The current examination workspace is a structured generic demo layout, not a reproduction of the official AFMSF 3A/3B form artwork. Verify exact source-form labels, field order and layout before treating generated output as a formal form.
+- PDF output uses the browser print dialog and a generic demonstration template. It is not digitally signed.
+- Profiles, records and audit-like views are client-side demonstration behaviour. There is no server-side authentication, authorisation, database persistence, durable audit service, approved sanitisation engine or production identity assurance.
+- The workstation's field rules are illustrative PoC defaults, not an approved operational sanitisation policy.
+- Use synthetic data only. Never enter real patient, personnel, operational or classified information.
 
 ## Pre-demo checklist
 
-- [ ] HTTPS works and browser shows a valid certificate.
-- [ ] Correct `index.html` is present at the document root.
-- [ ] No directory listing is exposed.
-- [ ] Test on the actual presentation laptop and browser.
-- [ ] Test Hostinger primary URL and BigRock standby URL separately.
-- [ ] Keep a local offline copy of this deployment folder.
-- [ ] Use only synthetic data.
-- [ ] Rehearse the full interaction path; this release demonstrates field configuration only.
+- [ ] HTTPS works and certificate is valid.
+- [ ] Correct `index.html` is in the document root.
+- [ ] Hostinger primary URL tested end-to-end.
+- [ ] BigRock standby URL tested end-to-end.
+- [ ] Browser pop-ups allowed for the PDF print action.
+- [ ] Downloaded XML and JSON file import paths tested.
+- [ ] Presentation laptop has a local copy of the deployment folder.
+- [ ] Demo reset and full replay rehearsed.
+- [ ] Only synthetic data is used.
 
-## Rollback
+## Update and rollback
 
-Keep the previous `index.html` as a dated local backup. If the new version fails, upload the previous file back to the same document root and hard-refresh the browser.
+Keep a dated backup of the currently deployed `index.html`. To update, upload the new `index.html` from this folder and hard-refresh the browser. If the release fails, restore the dated backup.
