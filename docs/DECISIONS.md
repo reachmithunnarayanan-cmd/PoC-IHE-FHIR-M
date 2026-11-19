@@ -16,12 +16,14 @@ This log records the current agreed baseline. Revisit a decision only when new e
 | D-010 | AME is AFMSF 3B; PME is AFMSF 3A. | Uploaded forms are the field/layout authority. |
 | D-011 | Use the union of AFMSF 3A and 3B fields as a canonical field superset with explicit form and domain mappings. | Common vocabulary supports both form workflows and cross-domain projections. |
 | D-012 | A completed PME record must be capable of generating an AME projection. | Reuse overlapping fields; identify AME-only/missing fields for completion; never invent values. |
-| D-013 | ADN-to-public exchange strips military-only and otherwise excluded fields before producing the XML package. | The outgoing package is a direction-specific subset; removal does not alter the ADN source. |
+| D-013 | ADN-to-public exchange strips military-only and otherwise excluded fields before producing the XML package. | The outgoing package is a direction-specific subset; removal does not alter the source. |
 | D-014 | Public-to-ADN exchange maps only permitted incoming fields and must not silently overwrite authoritative ADN identity, service or examination decisions. | Preserve domain ownership and source provenance. |
 | D-015 | The PoC XML is FHIR-inspired and representational, not required to validate as FHIR or an ABDM profile. | Formal ABDM profile/version selection, schema validation and conformance are deferred to Alpha/Beta. |
 | D-016 | The PoC uses explicit package export/import to represent transfer. | Do not imply real classified connectivity or security segregation. |
 | D-017 | Use synthetic data only. | No real patient or operational military data in the demonstration. |
 | D-018 | Hostinger Premium is the intended primary and BigRock the standby deployment. | Keep deployment practical; verify runtime constraints before implementation. |
+| D-019 | The Secure Data Exchange Workstation has a field-selection configuration panel with independent selection/deselection for each transfer direction. | The effective outgoing payload is the direction-specific allowlist plus required generated exchange metadata; locked exclusions remain enforced and deselection never alters source data. |
+| D-020 | Every transfer snapshots the effective sanitisation profile and mapping version. | Makes transformations reproducible and auditable. |
 
 ## Open implementation choices
 
