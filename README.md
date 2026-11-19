@@ -15,19 +15,23 @@ A visual, end-to-end proof of concept demonstrating structured clinical data exc
 Use one synthetic patient throughout:
 1. Register the patient in i-Dhanwantri.
 2. An HCP opens the waiting patient and captures clinical information once.
-3. Save the structured record and create an exchange package (FHIR Bundle at the exchange boundary).
-4. On the workstation, import and validate the package, map identity, add the required military administrative fields, and export an ADN-ingest package.
+3. Save the structured record and create a structured exchange package.
+4. On the workstation, import and validate the package, map identity, apply direction-specific field rules, and export the receiving-domain package.
 5. In Dhanwantri 3.0 ADN, import the package and show mapped fields with provenance.
-6. Open AME (AFMSF 3B) or PME (AFMSF 3A), complete only examination-specific fields, approve, and generate the corresponding PDF.
-7. Show the transaction/audit trail and the generated artefact.
+6. Complete a PME (AFMSF 3A), generate an AME (AFMSF 3B) from overlapping structured fields, and flag AME-specific gaps for completion.
+7. Demonstrate ADN-to-public sanitisation and export as FHIR-inspired XML, then show the structured clinical fields and transformation report.
+8. Show the transaction/audit trail and generated documentary artefacts.
 
 ## Guiding principles
 
 - Capture clinical information once; reuse it across downstream workflows.
+- The canonical field superset is the union of AFMSF 3A and 3B plus exchange/provenance fields; it is a vocabulary and mapping catalogue, not a shared database schema or transfer payload.
 - Structured data is the source of truth. PDFs are rendered documentary artefacts, not the interchange master.
-- Use FHIR/ABDM-compatible profiles at the internet-side exchange boundary; map only relevant fields into the ADN's AFMSF-oriented internal model.
+- The PoC public-side package is human-readable, structured, FHIR-inspired XML. It is representational and is not claimed to validate against FHIR or an ABDM profile.
+- Formal ABDM profile/version selection, schema validation and conformance are deferred to Alpha/Beta.
+- The workstation applies direction-specific pass, transform, add/enrich, remove and hold rules. Removing a field from an outgoing package never deletes it from the source record.
 - Keep the three product surfaces visually distinct but make the end-to-end flow obvious.
-- Preserve field-level provenance, source references, transaction IDs, timestamps, hashes, and template/profile versions where practical.
+- Preserve field-level provenance, source references, transaction IDs, timestamps, hashes and mapping/schema versions where practical.
 - Missing source values remain blank; never fabricate or silently default clinical values.
 - Use synthetic data only. This PoC does not connect to, certify, or emulate a real classified network.
 - Demonstrate domain transfer as explicit package export/import. Shared hosting and separate visual portals do not constitute security segregation.
@@ -38,6 +42,8 @@ Use one synthetic patient throughout:
 - [Product plan and screen inventory](docs/PRODUCT-PLAN.md)
 - [Data exchange and provenance](docs/DATA-EXCHANGE.md)
 - [AFMSF form requirements](docs/AFMSF-FORMS.md)
+- [Canonical field dictionary and projection rules](docs/CANONICAL-FIELD-DICTIONARY.md)
+- [Illustrative canonical field schema](schemas/canonical-field-superset.schema.json)
 - [Build plan and acceptance criteria](docs/BUILD-PLAN.md)
 - [Architecture decisions](docs/DECISIONS.md)
 
